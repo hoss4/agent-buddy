@@ -1,0 +1,21 @@
+[project]
+name = "agent-buddy"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "langchain>=0.1.0",
+    "langgraph>=0.0.15",
+    "langchain-openai>=0.1.0",
+    "mcp>=0.1.0",
+    "apscheduler>=3.10.4",
+    "sqlalchemy>=2.0.0",
+    "python-dotenv>=1.0.1",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "black>=24.0.0",
+]
