@@ -1,107 +1,100 @@
+# src/ingestion/bootstrap_jira.py
+
 import asyncio
-import os
 import json
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
 from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp.client.session import ClientSession
 
-import sys
-from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from src.database.db_utils import upsert_task_metadata
+from src.database.db_utils import upsert_task_metadata, upsert_calendar_event, log_audit_action
 
 load_dotenv(override=True)
 
 
+JIRA_SERVER_PATH = Path(__file__).parent/ "jira_custom_mcp.py"
+print(JIRA_SERVER_PATH)
+
 async def sync_jira_tasks():
-    """Fetches open tasks assigned to you from Jira and upserts them to SQLite."""
-    print("--- Starting Jira Task Sync ---")
-
-    email = os.getenv("JIRA_EMAIL", "")
-    api_token = os.getenv("JIRA_API_TOKEN", "")
-    base_url = os.getenv("JIRA_BASE_URL", "").rstrip("/")
-
-    if not all([email, api_token, base_url]):
-        print("Missing JIRA_EMAIL, JIRA_API_TOKEN, or JIRA_BASE_URL in environment.")
-        return
-
-    jira_env = os.environ.copy()
-    jira_env["JIRA_URL"] = base_url
-    jira_env["JIRA_USERNAME"] = email
-    jira_env["JIRA_API_TOKEN"] = api_token
+    print("--- Starting Jira Task Bootstrap ---")
 
     server_params = StdioServerParameters(
-        command="uvx",
-        args=["mcp-atlassian"],
-        env=jira_env,
+        command="python",
+        args=[str(JIRA_SERVER_PATH)],
     )
 
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            print("Connected to Jira MCP.")
-            print(email)
-
-            jql = f'assignee = "{email}" ORDER BY updated DESC'
+            print("Connected to local Jira MCP server.")
 
             response = await session.call_tool(
-                "jira_search",
-                arguments={"jql": jql, "limit": 50},
+                "get_assigned_tasks",
+                arguments={},
             )
-
-            raw = response.content[0].text.strip()
             
-            print(raw)
+            tasks = [json.loads(item.text) for item in response.content]
+            # print(response)
+            # raw = response.content[0].text
+            # print(raw)
+            # print(type(raw))
+            # tasks = json.loads(raw) if isinstance(raw, str) else raw
+            # tasks = json.loads(response.content[0].text)⚠ S
+            # print(tasks)
+            # print(type(tasks))
 
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                print("could not parse mcp response as json. raw output:")
-                print(raw[:500])
-                return
-
-            issues = data.get("issues", data) if isinstance(data, dict) else data
-
-            if not issues:
-                print("No open issues found assigned to you.")
-                return
-
-            print(f"Found {len(issues)} issue(s). Saving to database...")
-
-            for issue in issues:
-                task_id = issue.get("key")
                 
 
-                title = issue.get("summary")
+            
+            if not tasks:
+                print("No open tasks found.")
+                return
 
-                description_raw = issue.get("description")
-                if isinstance(description_raw, dict):
-                    # Atlassian Document Format — extract plain text
-                    texts = []
-                    for block in description_raw.get("content", []):
-                        for node in block.get("content", []):
-                            if node.get("type") == "text":
-                                texts.append(node.get("text", ""))
-                    description = " ".join(texts) or "No description provided."
-                else:
-                    description = str(description_raw) if description_raw else "No description provided."
+            print(f"Found {len(tasks)} task(s). Saving...\n")
 
-                fields = issue.get("status")
-                status = issue.get("status").get("name")
+            saved, skipped = 0, 0
+            for task in tasks:
+                try:
+                    task_id = task["task_id"]
+                    effort  = task["effort_minutes"]  # 0 = Triage Agent will estimate
 
-                upsert_task_metadata(
-                    task_id=task_id,
-                    title=title,
-                    description=description[:500],
-                    total_estimated_effort=0,
-                    remaining_effort=0,
-                    deadline=None,
-                    dependency_id=None,
-                    status=status,
-                )
-                print(f"  Saved: {task_id} — {title}")
+                    upsert_task_metadata(
+                        task_id=task_id,
+                        title=task["title"],
+                        description=task["description"],
+                        issue_type=task["issue_type"],
+                        total_estimated_effort=effort,
+                        remaining_effort=effort,
+                        deadline=task["deadline"],
+                        numeric_priority=task["numeric_priority"],
+                        status=task["status"],
+                    )
 
-            print("✅ Jira sync complete!")
+                    upsert_calendar_event(
+                        event_id=task_id,
+                        source="Jira",
+                        title=task["title"],
+                        description=task["description"],
+                        start_time=None,
+                        end_time=None,
+                        original_start_time=None,
+                        priority=task["numeric_priority"],
+                        flexibility_score=1,
+                        status="Pending_Triage",
+                    )
+
+                    print(f"  {task_id} — {task['title']}")
+                    print(f"  type={task['issue_type']} | priority={task['numeric_priority']} | effort={effort or 'TBD'}min | deadline={task['deadline'] or 'none'}")
+                    saved += 1
+
+                except Exception as e:
+                    print(f"skipped {task.get('task_id', '?')}: {e}")
+                    skipped += 1
+
+           
+            print(f"Jira sync complete — {saved} saved, {skipped} skipped.")
 
 
 if __name__ == "__main__":

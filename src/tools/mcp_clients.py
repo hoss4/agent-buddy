@@ -40,15 +40,20 @@ async def verify_server(server_name: str, command: str, args: list[str], env: di
 
 async def main():
     # 1. Test Jira MCP Server (Using the stable community package)
+    email     = os.getenv("JIRA_EMAIL", "")
+    api_token = os.getenv("JIRA_API_TOKEN", "")
+    base_url  = os.getenv("JIRA_BASE_URL", "").rstrip("/")
+
+
     jira_env = os.environ.copy()
-    jira_env["JIRA_API_TOKEN"] = os.getenv("JIRA_API_TOKEN", "")
-    jira_env["JIRA_EMAIL"] = os.getenv("JIRA_EMAIL", "")
-    jira_env["JIRA_BASE_URL"] = os.getenv("JIRA_BASE_URL", "")
+    jira_env["JIRA_URL"]       = base_url
+    jira_env["JIRA_USERNAME"]  = email
+    jira_env["JIRA_API_TOKEN"] = api_token
     
     await verify_server(
         server_name="Jira MCP",
-        command="npx",
-        args=["-y", "mcp-jira-stdio@latest"], 
+        command="uvx",
+        args=["mcp-atlassian"], 
         env=jira_env
     )
 

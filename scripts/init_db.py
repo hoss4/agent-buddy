@@ -41,11 +41,14 @@ def init_db():
             task_id TEXT PRIMARY KEY,
             title TEXT,
             description TEXT,
-            total_estimated_effort INTEGER, -- in minutes
             remaining_effort INTEGER,
             deadline DATETIME,
             dependency_id TEXT,
-            status TEXT
+            status TEXT,
+            issue_type  TEXT DEFAULT 'Task',      
+            total_estimated_effort  INTEGER DEFAULT 0,  
+            numeric_priority        INTEGER DEFAULT 5,       
+            effort_needs_triage     INTEGER DEFAULT 1        
         )
     ''')
 
