@@ -35,7 +35,7 @@ async def verify_server(server_name: str, command: str, args: list[str], env: di
                     print(f"  - {tool.name}: {description}...")
                     
     except Exception as e:
-        print(f"❌ Failed to connect to {server_name}.")
+        print(f" Failed to connect to {server_name}.")
         print(f"Error: {e}")
 
 async def main():

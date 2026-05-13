@@ -41,7 +41,7 @@ async def sync_jira_tasks():
             # print(raw)
             # print(type(raw))
             # tasks = json.loads(raw) if isinstance(raw, str) else raw
-            # tasks = json.loads(response.content[0].text)⚠ S
+            # tasks = json.loads(response.content[0].text)
             # print(tasks)
             # print(type(tasks))
 

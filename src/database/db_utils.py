@@ -3,17 +3,24 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-# Locate the database dynamically
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "database.db"
 
 def get_connection():
     """Returns a connection to the SQLite database."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # Allows dict-like row access
+    conn = sqlite3.connect(DB_PATH,timeout=30)
+    conn.row_factory = sqlite3.Row 
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
+def is_first_run()-> bool:
+    conn= get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM calendar_shadow")
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count == 0    
 
 def upsert_calendar_event(
     event_id: str,
@@ -113,3 +120,64 @@ def log_audit_action(
     )
     conn.commit()
     conn.close()
+    
+def log_audit_action_conn(conn, event_id: str, change_type: str, reasoning_statement: str):
+    """Internal version — reuses an existing connection. Use inside transactions."""
+    conn.cursor().execute(
+        "INSERT INTO audit_log (event_id, change_type, reasoning_statement) VALUES (?, ?, ?)",
+        (event_id, change_type, reasoning_statement),
+    )
+
+def get_task_core_fields(task_id: str) -> dict | None:
+    """
+    Returns just the fields we watch for changes: priority and deadline.
+    Returns None if the task doesn't exist yet.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT numeric_priority, deadline FROM task_metadata WHERE task_id = ?",
+        (task_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_task_critical_fields(task_id: str, numeric_priority: int, deadline: str):
+    """
+    Updates only priority and deadline when Jira signals a change.
+    Also resets effort_needs_triage=1 so the Triage Agent reprocesses it.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE task_metadata
+        SET numeric_priority     = ?,
+            deadline             = ?,
+            effort_needs_triage  = 1
+        WHERE task_id = ?
+    ''', (numeric_priority, deadline, task_id))
+
+    #reset triage state so Triage + Planner reprocess the slot
+    cursor.execute('''
+        UPDATE calendar_shadow
+        SET priority   = ?,
+            status     = 'Pending_Triage'
+        WHERE event_id = ?
+    ''', (numeric_priority, task_id))
+
+    conn.commit()
+    conn.close()
+    
+def event_exists(event_id: str) -> bool:
+    """Returns True if event_id already exists in calendar_shadow."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT 1 FROM calendar_shadow WHERE event_id = ?",
+        (event_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None

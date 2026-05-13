@@ -88,7 +88,7 @@ def sync_jira_tasks():
         )
         print(f"  Saved: {task_id} — {title}")
 
-    print("✅ Jira sync complete!")
+    print("Jira sync complete!")
 
 
 if __name__ == "__main__":

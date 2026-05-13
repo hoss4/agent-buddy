@@ -3,7 +3,8 @@ import os
 from pathlib import Path
 
 # Set path relative to the project root
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+print(PROJECT_ROOT)
 DB_PATH = PROJECT_ROOT / "data" / "database.db"
 
 def init_db():
@@ -15,6 +16,7 @@ def init_db():
     # Connect to (or create) the database
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
 
     print(f"Initializing database at: {DB_PATH}")
 
