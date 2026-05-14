@@ -40,8 +40,14 @@ def format_busy_slots(busy: list[dict]) -> str:
         return "No events scheduled in the next 14 days."
     lines = []
     for slot in busy:
+        try:
+            dt = datetime.fromisoformat(slot["start_time"])
+            day_label = dt.strftime("%A")  # "Monday", "Tuesday", etc
+        except:
+            day_label = "?"
         flex = "Flexible" if slot["flexibility_score"] == 1 else "Fixed"
-        lines.append(f"  - {slot['title']}: {slot['start_time']} → {slot['end_time']} [{flex}]")
+        lines.append(f"  - {day_label} {slot['start_time']} → {slot['end_time']}: "
+            f"{slot['title']} [{flex}]")
     return "\n".join(lines)
 
 
@@ -93,16 +99,17 @@ def planner_node(state: AgentState) -> AgentState:
     )
 
     user_msg = f"""
-Current date and time (Cairo, UTC+2): {today_str}
-Today is {day_name}
-DO NOT propose any slot that starts before: {now_str}
+
+TODAY: {day_name.upper()}, {today_str} (Cairo, UTC+2)
+DO NOT propose any slot starting before: {now_str}
+
 Task title: {signal['title']}
 Description: {signal.get('description', 'None')}
 Estimated effort: {effort} minutes (slot MUST be exactly this duration)
 Priority: {signal.get('priority', 5)}/10
 Deadline: {signal.get('deadline', 'None')}
 
-Current busy schedule (next 14 days):
+Current busy schedule (next 14 days — note the day names):
 {format_busy_slots(busy_slots)}
 
 Previously failed slots (do NOT propose these):
@@ -113,7 +120,11 @@ Find a slot for exactly {effort} minutes. Remember:
 - Priority {signal.get('priority', 5)} means schedule within 3-4 days if possible
 - Today is {day_name} — count forward from today
 - Leave at least 15 minutes buffer between events.
+Find exactly {effort} minutes. If the task doesn't fit today (remaining hours < {effort} min), 
+schedule it later. NEVER schedule outside 9 AM to 7 PM.
 """
+
+
 
     try:
         response = llm.invoke([
