@@ -60,6 +60,7 @@ async def sync_jira_tasks():
                     task_id = task["task_id"]
                     effort  = task["effort_minutes"]  # 0 = Triage Agent will estimate
 
+                    print(effort)
                     upsert_task_metadata(
                         task_id=task_id,
                         title=task["title"],

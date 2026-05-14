@@ -73,6 +73,9 @@ def get_assigned_tasks() -> list[dict]:
         effort_minutes = (raw_estimate // 60) if raw_estimate else 0
 
         priority_name = (fields.get("priority") or {}).get("name", "medium")
+        
+        print("here-------------------")
+        print(f"retrieved task: {issue.get("key")} {fields.get("summary")} {effort_minutes} {raw_estimate}")
 
         results.append({
             "task_id":          issue.get("key"),

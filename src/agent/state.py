@@ -10,3 +10,4 @@ class AgentState(TypedDict):
     hitl_decision: Optional[str]
     errors: list[str]
     failed_slots: list[dict]
+    calendar_push: Optional[dict]

@@ -11,6 +11,8 @@ llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 def classify(signal: dict) -> dict:
 
+    total_estimated_effort=signal.get("total_estimated_effort","No estimated effort")
+    print("total_estimated_effort :", total_estimated_effort)
     deadline  = signal.get("deadline")
     issue_type = signal.get("issue_type")  
     today      = datetime.now(timezone.utc).strftime("%Y-%m-%d")  
@@ -25,6 +27,7 @@ Current priority: {signal.get('priority', 5)}
 End Time: {signal.get('end_time',"No given end time")}
 Deadline: {deadline if deadline else 'None'}
 Issue type: {issue_type if issue_type else 'N/A'}
+Estimated Effort Minutes : {total_estimated_effort}
 """
     response = llm.invoke([
         SystemMessage(content=TRIAGE_PROMPT),
@@ -100,7 +103,8 @@ def triage_node(state: dict) -> dict:
         apply_to_db(signal["event_id"], signal["source"], decision)
 
         print(f"  [triage] flex={decision['flexibility_score']} "
-              f"pri={decision['priority']} dismiss={decision.get('dismiss', False)}")
+              f"pri={decision['priority']} dismiss={decision.get('dismiss', False)}"
+              f"effort={decision['estimated_effort_minutes']} ")
         print(f"  [triage] reasoning: {decision['reasoning']}")
 
         return {**state, "triage_decision": decision}

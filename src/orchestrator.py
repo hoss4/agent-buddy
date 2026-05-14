@@ -1,6 +1,12 @@
-import asyncio
-from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+import os
+import asyncio
+import json
+from datetime import datetime, timezone, timedelta
+from mcp.client.stdio import stdio_client, StdioServerParameters
+from mcp.client.session import ClientSession
+from dotenv import load_dotenv
 
 from src.ingestion.poller import poll_jira, poll_gmail, strategic_calendar_sync
 from src.agent.graph import agent_buddy_graph
@@ -39,14 +45,51 @@ def _empty_state(signal: dict) -> dict:
         "retry_count": 0,
         "hitl_decision": None,
         "errors": [],
-        "failed_slots": []  
+        "failed_slots": [], 
+        "calendar_push": None
     }
+async def push_to_google_calendar(push: dict) -> bool:
+    """Async Calendar push — runs in the orchestrator's event loop."""
+    google_env = os.environ.copy()
+    google_env["GOOGLE_CLIENT_ID"]     = os.getenv("GOOGLE_CLIENT_ID", "")
+    google_env["GOOGLE_CLIENT_SECRET"] = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    google_env["GOOGLE_REFRESH_TOKEN"] = os.getenv("GOOGLE_REFRESH_TOKEN", "")
+
+    server_params = StdioServerParameters(
+        command="npx",
+        args=["-y", "@gongrzhe/server-calendar-mcp"],
+        env=google_env,
+    )
+
+    try:
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                response = await session.call_tool(
+                    "create_event",
+                    arguments={
+                        "summary":     push["title"],
+                        "description": push.get("description", ""),
+                        "start":       {"dateTime": push["start"], "timeZone": "Africa/Cairo"},
+                        "end":         {"dateTime": push["end"],   "timeZone": "Africa/Cairo"},
+                    },
+                )
+
+                raw = response.content[0].text.strip()
+                print(f"  [calendar] Event created: {raw[:100]}")
+                return True
+
+    except Exception as e:
+        print(f"  calendar Push failed: {e}")
+        return False
+    
 
 
 async def run_cycle():
     print(f"\nOrchestrator Cycle started at {datetime.now(timezone.utc).strftime('%H:%M:%S')}")
 
-    await poll_jira()
+    # await poll_jira()
     # await poll_gmail()
 
     signals = get_pending_signals()
@@ -55,7 +98,13 @@ async def run_cycle():
 
     for signal in signals:
         try:
-            agent_buddy_graph.invoke(_empty_state(signal))
+            print(f"started graph on signal {signal}")
+            final_state=agent_buddy_graph.invoke(_empty_state(signal))
+            push = final_state.get("calendar_push")
+            if push:
+                print(f"  [calendar] Pushing to Google Calendar...")
+                await push_to_google_calendar(push)
+            
         except Exception as e:
             print(f"Failed on {signal['event_id']}: {e}")
 

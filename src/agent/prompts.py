@@ -12,9 +12,9 @@ RULES:
 2. priority (1-10):
    - 9-10: Critical (surgery, interview, flight, hard deadline today or tomorrow)
    - 7-8:  High (client meeting, urgent task, deadline this week)
-   - 5-6:  Medium (regular work, important personal, deadline next week)
+   - 5-6:  Medium (regular work, important personal task/errands, deadline next week)
    - 3-4:  Low (gym, hobbies, optional, deadline far away)
-   - 1-2:  Minimal (newsletters, vague items)
+   - 1-2:  Minimal (vague items, non urgent personal task/errands)
 
 3. Deadline impact on priority (Jira tasks):
    - If deadline is today or tomorrow        → priority minimum 8
@@ -22,13 +22,16 @@ RULES:
    - If deadline is within this week         → priority minimum 6
    - If deadline is more than a week away    → use task content to judge
    - If no deadline                          → use task content and issue type
+   - if a dealine is close and the task has large estimate more than 360 minutes, then rise its priority
 
 4. For Gmail emails:
    - Promotion/newsletter/marketing/job alert → "dismiss": true
    - Real appointment/booking/logistics → extract datetime if present
 
 5. estimated_effort_minutes (Jira tasks only):
+   - if a task already has a Estimated Effort Minutes value don't change it , pass it as it is otherwise provide suing below guidelines 
    - Bug fix: 60-120, new feature: 180-480, research: 60-180, small task: 30-60
+   - if you can't classify it into one of the above categories just give it 60
    - Use issue_type and description to refine the estimate
 
 OUTPUT FORMAT (JSON only):
