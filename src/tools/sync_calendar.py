@@ -138,7 +138,7 @@ async def sync_google_calendar():
                         original_start_time=start_time,
                         priority=5,
                         flexibility_score=1,
-                        status="Pending_Triage",
+                        status="Scheduled",
                     )
                     saved += 1
 

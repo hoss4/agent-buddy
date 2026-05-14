@@ -23,20 +23,21 @@ def after_triage_router(state: AgentState) -> str:
 
     signal = state["current_signal"]
 
-    # Only Jira tasks without a slot need the Planner
-    if signal["source"] == "Jira" and not signal.get("start_time"):
+    # jira tasks need the Planner
+    if signal["source"] == "Jira" :
         return END
         #return "planner"
-
-    # Calendar/Gmail events already have a slot — confirm them directly
-    if signal.get("start_time"):
-        return "executor"
-
-    # # Gmail event with extracted datetime from triage — send to executor
-    # if decision.get("extracted_start"):
+        
+        
+    # gmail is already scheduled , go to END
+    if signal["source"] == "Google_Calendar":
+        return END
+    
+    
+    # # Gmail events with extracted datetime go to executor
+    # if signal.get("start_time") or decision.get("extracted_start"):
     #     return "executor"
     
-
 
     return END
 

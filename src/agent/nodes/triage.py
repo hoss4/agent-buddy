@@ -61,7 +61,10 @@ def apply_to_db(event_id: str, source: str, decision: dict):
             UPDATE calendar_shadow
             SET flexibility_score = ?,
                 priority          = ?,
-                status            = 'Confirmed',
+                status            = CASE
+                                          WHEN status = 'Scheduled' THEN 'Scheduled'
+                                          ELSE 'Confirmed'
+                                        END,
                 start_time        = COALESCE(?, start_time),
                 end_time          = COALESCE(?, end_time)
             WHERE event_id = ?
