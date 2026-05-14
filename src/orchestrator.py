@@ -26,11 +26,7 @@ def get_pending_signals() -> list[dict]:
                 tm.total_estimated_effort      
             FROM calendar_shadow cs
             LEFT JOIN task_metadata tm ON tm.task_id = cs.event_id
-            WHERE 
-            cs.status = 'Pending_Triage'
-            OR
-            (cs.status = 'Scheduled' AND cs.source = 'Google_Calendar'
-                 AND cs.flexibility_score = 1 AND cs.priority = 5)
+            WHERE cs.is_triaged = 0
             ORDER BY cs.priority DESC
         """)
         rows = [dict(r) for r in cursor.fetchall()]

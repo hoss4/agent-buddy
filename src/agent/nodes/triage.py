@@ -47,7 +47,7 @@ def apply_to_db(event_id: str, source: str, decision: dict):
 
     if decision.get("dismiss"):
         cursor.execute(
-            "UPDATE calendar_shadow SET status = 'Dismissed' WHERE event_id = ?",
+            "UPDATE calendar_shadow SET status = 'Dismissed',is_triaged = 1, WHERE event_id = ?",
             (event_id,),
         )
         log_audit_action_conn(
@@ -65,6 +65,7 @@ def apply_to_db(event_id: str, source: str, decision: dict):
                                           WHEN status = 'Scheduled' THEN 'Scheduled'
                                           ELSE 'Confirmed'
                                         END,
+                is_triaged = 1,
                 start_time        = COALESCE(?, start_time),
                 end_time          = COALESCE(?, end_time)
             WHERE event_id = ?

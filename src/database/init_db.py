@@ -33,6 +33,7 @@ def init_db():
             priority INTEGER DEFAULT 5,
             flexibility_score INTEGER DEFAULT 1, -- 0: Fixed, 1: Flexible
             status TEXT DEFAULT 'Tentative',
+            is_triaged INTEGER DEFAULT 0,
             last_synced DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')

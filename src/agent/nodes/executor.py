@@ -43,20 +43,20 @@ def executor_node(state: dict) -> dict:
                 }
             }
            
-        else:
-            # Google Calendar / Gmail — already has a slot, just confirm it
-            cursor.execute("""
-                UPDATE calendar_shadow
-                SET status = 'Scheduled'
-                WHERE event_id = ?
-            """, (event_id,))
+        # else:
+        #     # Google Calendar / Gmail — already has a slot, just confirm it
+        #     cursor.execute("""
+        #         UPDATE calendar_shadow
+        #         SET status = 'Scheduled'
+        #         WHERE event_id = ?
+        #     """, (event_id,))
 
-            log_audit_action_conn(
-                conn, event_id, "Created",
-                f"Confirmed existing slot for '{signal['title']}' from {source}.",
-            )
-            conn.commit()
-            print(f"  [executor] Confirmed existing slot: {signal['title']}")
+        #     log_audit_action_conn(
+        #         conn, event_id, "Created",
+        #         f"Confirmed existing slot for '{signal['title']}' from {source}.",
+        #     )
+        #     conn.commit()
+        #     print(f"  [executor] Confirmed existing slot: {signal['title']}")
 
     finally:
         conn.close()

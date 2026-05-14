@@ -25,8 +25,7 @@ def after_triage_router(state: AgentState) -> str:
 
     # jira tasks need the Planner
     if signal["source"] == "Jira" :
-        return END
-        #return "planner"
+        return "planner"
         
         
     # gmail is already scheduled , go to END
@@ -115,7 +114,11 @@ def build_graph():
     #graph.add_edge("load_signal", "triage")
   
     graph.add_conditional_edges(
-        "triage", after_triage_router,{"planner" : "planner","executor": "executor",END : END,},
+        "triage", 
+        after_triage_router,{
+            "planner" : "planner",
+            #"executor": "executor",
+            END : END,},
     )
 
     graph.add_edge("planner", "auditor")
