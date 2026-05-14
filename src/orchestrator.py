@@ -61,18 +61,26 @@ async def push_to_google_calendar(push: dict) -> bool:
         env=google_env,
     )
 
+
+    start_dt = datetime.fromisoformat(push["start"])
+    end_dt   = datetime.fromisoformat(push["end"])
+    
+    start_naive = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    end_naive   = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
     try:
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
+
 
                 response = await session.call_tool(
                     "create_event",
                     arguments={
                         "summary":     push["title"],
                         "description": push.get("description", ""),
-                        "start":       {"dateTime": push["start"], "timeZone": "Africa/Cairo"},
-                        "end":         {"dateTime": push["end"],   "timeZone": "Africa/Cairo"},
+                        "start":       {"dateTime":start_naive, "timeZone": "Africa/Cairo"},
+                        "end":         {"dateTime":end_naive,   "timeZone": "Africa/Cairo"},
                     },
                 )
 

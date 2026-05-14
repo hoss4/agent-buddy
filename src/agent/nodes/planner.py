@@ -74,9 +74,16 @@ def planner_node(state: AgentState) -> AgentState:
 
     busy_slots   = get_busy_slots()
     
+    print("---------------busy slots ---------------------")
+    print(format_busy_slots(busy_slots))
+    print("---------------busy slots ---------------------")
+    
+    
     now_cairo    = datetime.now(CAIRO_OFFSET)
     now_str      = now_cairo.strftime("%Y-%m-%dT%H:%M:%S+02:00")
     today_str    = now_cairo.strftime("%Y-%m-%d %H:%M")
+    day_name   = now_cairo.strftime("%A")
+    print("day_name : ",day_name)
 
     effort = get_effort(state)
     failed_slots_str = (
@@ -87,6 +94,7 @@ def planner_node(state: AgentState) -> AgentState:
 
     user_msg = f"""
 Current date and time (Cairo, UTC+2): {today_str}
+Today is {day_name}
 DO NOT propose any slot that starts before: {now_str}
 Task title: {signal['title']}
 Description: {signal.get('description', 'None')}
@@ -100,7 +108,11 @@ Current busy schedule (next 14 days):
 Previously failed slots (do NOT propose these):
 {failed_slots_str}
 
-Find the best available slot for this task.
+Find a slot for exactly {effort} minutes. Remember:
+- Weekends are Saturday and Sunday (skip them)
+- Priority {signal.get('priority', 5)} means schedule within 3-4 days if possible
+- Today is {day_name} — count forward from today
+- Leave at least 15 minutes buffer between events.
 """
 
     try:
@@ -115,6 +127,17 @@ Find the best available slot for this task.
                 raw = raw[4:]
 
         proposed = json.loads(raw.strip())
+        
+        if not proposed.get("proposed_start") or not proposed.get("proposed_end"):
+            print(f"  [planner] Could not find a valid slot.")
+            print(f"  [planner] Reasoning: {proposed.get('reasoning', 'No reasoning provided')}")
+            return {
+                **state,
+                "proposed_slot": None,  
+                "retry_count":   retry_count + 1,
+            }
+        
+        
         print(f"  [planner] Proposed: {proposed['proposed_start']} → {proposed['proposed_end']}")
         print(f"  [planner] Reasoning: {proposed['reasoning']}")
 

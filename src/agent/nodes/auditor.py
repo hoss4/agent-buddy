@@ -31,7 +31,8 @@ def auditor_node(state: AgentState) -> AgentState:
     proposed   = state.get("proposed_slot")
     signal     = state["current_signal"]
 
-    if not proposed:
+    if not proposed or not proposed.get("proposed_start") or not proposed.get("proposed_end"):
+        # give up go to hitl
         print("  [auditor] No proposed slot to check.")
         return {**state, "conflict_found": False, "conflicting_event": None}
 
