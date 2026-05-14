@@ -97,7 +97,7 @@ async def push_to_google_calendar(push: dict) -> bool:
 async def run_cycle():
     print(f"\nOrchestrator Cycle started at {datetime.now(timezone.utc).strftime('%H:%M:%S')}")
 
-    # await poll_jira()
+    await poll_jira()
     # await poll_gmail()
 
     signals = get_pending_signals()
@@ -121,18 +121,19 @@ async def run_cycle():
 
 async def start():
     
-    await run_cycle()
-    # scheduler = AsyncIOScheduler(timezone="UTC")
+    #await run_cycle()
+    
+    scheduler = AsyncIOScheduler(timezone="UTC")
 
-    # scheduler.add_job(run_cycle, "interval", minutes=15,
-    #                   next_run_time=datetime.now(timezone.utc))
-    # scheduler.add_job(strategic_calendar_sync, "interval", weeks=1,
-    #                   next_run_time=datetime.now(timezone.utc) + timedelta(weeks=1))
+    scheduler.add_job(run_cycle, "interval", minutes=2,
+                      next_run_time=datetime.now(timezone.utc))
+    scheduler.add_job(strategic_calendar_sync, "interval", weeks=1,
+                      next_run_time=datetime.now(timezone.utc) + timedelta(weeks=1))
 
-    # print("=" * 50)
-    # print("  Agent Buddy Orchestrator — Started")
-    # print("=" * 50)
+    print("=" * 50)
+    print("  Agent Buddy Orchestrator — Started")
+    print("=" * 50)
  
 
-    # scheduler.start()
-    # await asyncio.Event().wait()
+    scheduler.start()
+    await asyncio.Event().wait()
