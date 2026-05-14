@@ -1,5 +1,53 @@
 from src.agent.state import AgentState
 from src.database.db_utils import get_connection
+from datetime import datetime, timezone, timedelta
+
+
+def to_utc(dt_str: str) -> datetime:
+    if not dt_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(dt_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone(timedelta(hours=2)))
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+def _get_conflicting_events(start: str, end: str, exclude_event_id: str) -> list[dict]:
+    proposed_start = to_utc(start)
+    proposed_end   = to_utc(end)
+
+    if not proposed_start or not proposed_end:
+        return []
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT event_id, title, start_time, end_time, flexibility_score, status
+            FROM calendar_shadow
+            WHERE status NOT IN ('Completed', 'Dismissed', 'Pending_Triage')
+              AND event_id != ?
+              AND start_time IS NOT NULL
+              AND end_time   IS NOT NULL
+        """, (exclude_event_id,))
+        rows = [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+    conflicts = []
+    for row in rows:
+        event_start = to_utc(row["start_time"])
+        event_end   = to_utc(row["end_time"])
+
+        if not event_start or not event_end:
+            continue
+
+        if proposed_start < event_end and proposed_end > event_start:
+            conflicts.append(row)
+
+    return conflicts
 
 
 def get_conflicting_events(start: str, end: str, exclude_event_id: str) -> list[dict]:
@@ -8,8 +56,13 @@ def get_conflicting_events(start: str, end: str, exclude_event_id: str) -> list[
     Excludes the task being scheduled itself.
     """
     conn = get_connection()
+    proposed_start = to_utc(start)
+    proposed_end   = to_utc(end)
+    
     try:
         cursor = conn.cursor()
+        
+        
         cursor.execute("""
             SELECT event_id, title, start_time, end_time, flexibility_score, status
             FROM calendar_shadow
@@ -34,6 +87,7 @@ def auditor_node(state: AgentState) -> AgentState:
     if not proposed or not proposed.get("proposed_start") or not proposed.get("proposed_end"):
         # give up go to hitl
         print("  [auditor] No proposed slot to check.")
+        print("proposed : ",proposed)
         return {**state, "conflict_found": False, "conflicting_event": None}
 
     start    = proposed["proposed_start"]

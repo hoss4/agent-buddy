@@ -34,29 +34,51 @@ def hitl_node(state: dict) -> dict:
     Presents the Fixed conflict to the user and records their decision.
     The after_hitl_router in graph.py then routes based on hitl_decision.
     """
+    print("-----------here---------------")
     signal   = state["current_signal"]
+    print("-----------here1---------------")
     conflict = state.get("conflicting_event", {})
+    print("-----------here2---------------")
     proposed = state.get("proposed_slot", {})
+    print("-----------here3---------------")
 
-    # Build the two options
+    if conflict:
+        # Fixed conflict case
+        print(f"  Conflict: '{conflict['title']}' (Fixed)")
+        print(f"            {conflict['start_time']} → {conflict['end_time']}")
+        reason = f"Fixed conflict with '{conflict['title']}'"
+    else:
+        # Max retries case
+        print(f"  Issue: Planner could not find a free slot")
+        reason = "No available slot after 3 attempts"
+
     options = {
-        "A": f"Skip '{signal['title']}' for now — keep '{conflict['title']}' as is",
-        "B": f"Schedule '{signal['title']}' manually — I will handle the conflict myself",
-        "C": f"Discard '{signal['title']}' entirely — remove it from the schedule",
+        "A": f"Skip '{signal['title']}' for now",
+        "B": f"I will manually handle this",
+        "C": f"Discard '{signal['title']}' entirely",
     }
+    
+    
+    print(f"\n  Options:")
+    for key, desc in options.items():
+        print(f"  [{key}] {desc}")
+    print()
 
-    choice = present_conflict(signal, conflict, options)
+    while True:
+        choice = input(f"  Your choice (A/B/C): ").strip().upper()
+        if choice in options:
+            break
+        print("  Invalid choice. Please enter A, B, or C.")
 
-    # Map choice to a decision string the router understands
-    decision_map = {
-        "A": "skip",
-        "B": "manual",
-        "C": "discard",
-    }
+    decision_map = {"A": "skip", "B": "manual", "C": "discard"}
     decision = decision_map[choice]
 
     print(f"\n  [hitl] Decision recorded: {decision}")
     print("=" * 60 + "\n")
+    
+    
+    print("-----------here6---------------")
+
 
     # Log the decision
     conn = get_connection()

@@ -44,7 +44,7 @@ def after_auditor_router(state: dict) -> str:
     proposed    = state.get("proposed_slot")
     retry_count = state.get("retry_count", 0)
 
-    # Planner exhausted retries
+    # Planner exhausted retries or didn't propose
     if not proposed:
         print("  [router] Max retries — escalating to HITL.")
         return "hitl_gate"
@@ -54,23 +54,26 @@ def after_auditor_router(state: dict) -> str:
         return "executor"
 
     conflict = state.get("conflicting_event", {})
+    
+    # Check if both are Fixed — only then go to HITL immediately
+    signal_flex   = state["current_signal"].get("flexibility_score", 1)
+    conflict_flex = state.get("conflicting_event", {}).get("flexibility_score", 1)
 
-    ## needs revision
-    if conflict.get("flexibility_score") == 1:
-        # flexible conflict , add to failed and retry
-        failed_slots = state.get("failed_slots", [])
-        failed_slots.append({
-            "start":  state["proposed_slot"]["proposed_start"],
-            "end":    state["proposed_slot"]["proposed_end"],
-            "reason": f"Occupied by '{conflict['title']}'",
-        })
-        state["failed_slots"] = failed_slots
-        print(f"  [router] Flexible conflict — retrying planner.")
-        return "planner"
+    if signal_flex == 0 and conflict_flex == 0:
+        print("  [router] Fixed vs Fixed conflict — escalating to HITL.")
+        return "hitl_gate"
 
-    # Fixed conflict — needs human
-    print(f"  [router] Fixed conflict — escalating to HITL.")
-    return "hitl_gate"
+    # Otherwise retry planner
+    failed_slots = state.get("failed_slots", [])
+    failed_slots.append({
+        "start":  state["proposed_slot"]["proposed_start"],
+        "end":    state["proposed_slot"]["proposed_end"],
+        "reason": f"Occupied by '{state['conflicting_event']['title']}'",
+    })
+    state["failed_slots"] = failed_slots
+    print("  [router] Conflict — retrying planner.")
+    return "planner"
+
 
 
 def after_hitl_router(state: dict) -> str:
