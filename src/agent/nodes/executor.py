@@ -6,7 +6,7 @@ def executor_node(state: dict) -> dict:
     signal   = state["current_signal"]
     proposed = state.get("proposed_slot")
     event_id = signal["event_id"]
-    source   = signal["source"]
+    #source   = signal["source"]
 
     conn = get_connection()
     try:
@@ -26,7 +26,7 @@ def executor_node(state: dict) -> dict:
             """, (start, end, event_id))
 
             log_audit_action_conn(
-                conn, event_id, "Rescheduled",
+                conn, event_id, "Scheduled",
                 f"Planner scheduled '{signal['title']}' at {start} → {end}. "
                 f"{proposed.get('reasoning', '')}",
             )

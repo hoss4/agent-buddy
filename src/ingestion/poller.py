@@ -367,6 +367,11 @@ async def strategic_calendar_sync():
                         title       = event.get("summary", "Untitled Event")
                         description = event.get("description", "") or ""
 
+                        print(" event title : ",title)
+                        if title.startswith("Deep Work:"):
+                            print(f"  [sync] Skipping agent-created event: {title}")
+                            continue
+
                         start_raw  = event.get("start") or {}
                         end_raw    = event.get("end")   or {}
                         start_time = normalize_datetime(

@@ -109,11 +109,15 @@ async def sync_google_calendar():
 
             saved, skipped = 0, 0
             for event in events:
+                 
                 try:
                     event_id = event.get("id")
                     title = event.get("summary", "Untitled Event")
                     description = event.get("description", "No Description provided") 
-
+                    print(" event title : ",title)
+                    if title.startswith("Deep Work:"):
+                        print(f"  [sync] Skipping agent-created event: {title}")
+                        continue
                     start_raw = (event.get("start") or {})
                     end_raw   = (event.get("end")   or {})
                     start_time = normalize_datetime(

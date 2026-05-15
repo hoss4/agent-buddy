@@ -34,13 +34,13 @@ def hitl_node(state: dict) -> dict:
     Presents the Fixed conflict to the user and records their decision.
     The after_hitl_router in graph.py then routes based on hitl_decision.
     """
-    print("-----------here---------------")
+    #print("-----------here---------------")
     signal   = state["current_signal"]
-    print("-----------here1---------------")
+    #print("-----------here1---------------")
     conflict = state.get("conflicting_event", {})
-    print("-----------here2---------------")
-    proposed = state.get("proposed_slot", {})
-    print("-----------here3---------------")
+    #print("-----------here2---------------")
+    #proposed = state.get("proposed_slot", {})
+    #print("-----------here3---------------")
 
     if conflict:
         # Fixed conflict case

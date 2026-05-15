@@ -55,7 +55,7 @@ def after_auditor_router(state: dict) -> str:
 
     conflict = state.get("conflicting_event", {})
     
-    # Check if both are Fixed — only then go to HITL immediately
+    # check if both are Fixed — only then go to HITL immediately
     signal_flex   = state["current_signal"].get("flexibility_score", 1)
     conflict_flex = state.get("conflicting_event", {}).get("flexibility_score", 1)
 
@@ -63,7 +63,7 @@ def after_auditor_router(state: dict) -> str:
         print("  [router] Fixed vs Fixed conflict — escalating to HITL.")
         return "hitl_gate"
 
-    # Otherwise retry planner
+    # otherwise retry planner
     failed_slots = state.get("failed_slots", [])
     failed_slots.append({
         "start":  state["proposed_slot"]["proposed_start"],

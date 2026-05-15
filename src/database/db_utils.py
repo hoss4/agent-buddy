@@ -163,7 +163,8 @@ def update_task_critical_fields(task_id: str, numeric_priority: int, deadline: s
     cursor.execute('''
         UPDATE calendar_shadow
         SET priority   = ?,
-            status     = 'Pending_Triage'
+            status     = 'Pending_Triage',
+            is_triaged =0
         WHERE event_id = ?
     ''', (numeric_priority, task_id))
 
