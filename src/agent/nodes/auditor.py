@@ -3,20 +3,90 @@ from src.database.db_utils import get_connection
 from datetime import datetime, timezone, timedelta
 
 
-def to_utc(dt_str: str) -> datetime:
+def to_naive(dt_str: str) -> datetime:
     if not dt_str:
         return None
     try:
-        dt = datetime.fromisoformat(dt_str)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone(timedelta(hours=2)))
-        return dt.astimezone(timezone.utc)
+        naive = dt_str.split("+")[0].split("Z")[0]
+        return datetime.fromisoformat(naive)
     except Exception:
         return None
 
-def _get_conflicting_events(start: str, end: str, exclude_event_id: str) -> list[dict]:
-    proposed_start = to_utc(start)
-    proposed_end   = to_utc(end)
+# def to_utc(dt_str: str) -> datetime:
+#     if not dt_str:
+#         return None
+#     try:
+#         dt = datetime.fromisoformat(dt_str)
+#         if dt.tzinfo is None:
+#             dt = dt.replace(tzinfo=timezone(timedelta(hours=2)))
+#         return dt.astimezone(timezone.utc)
+#     except Exception:
+#         return None
+
+# def _get_conflicting_events(start: str, end: str, exclude_event_id: str) -> list[dict]:
+#     proposed_start = to_utc(start)
+#     proposed_end   = to_utc(end)
+
+#     if not proposed_start or not proposed_end:
+#         return []
+
+#     conn = get_connection()
+#     try:
+#         cursor = conn.cursor()
+#         cursor.execute("""
+#             SELECT event_id, title, start_time, end_time, flexibility_score, status
+#             FROM calendar_shadow
+#             WHERE status NOT IN ('Completed', 'Dismissed', 'Pending_Triage')
+#               AND event_id != ?
+#               AND start_time IS NOT NULL
+#               AND end_time   IS NOT NULL
+#         """, (exclude_event_id,))
+#         rows = [dict(r) for r in cursor.fetchall()]
+#     finally:
+#         conn.close()
+
+#     conflicts = []
+#     for row in rows:
+#         event_start = to_utc(row["start_time"])
+#         event_end   = to_utc(row["end_time"])
+
+#         if not event_start or not event_end:
+#             continue
+
+#         if proposed_start < event_end and proposed_end > event_start:
+#             conflicts.append(row)
+
+#     return conflicts
+
+
+# def get_conflicting_events(start: str, end: str, exclude_event_id: str) -> list[dict]:
+#     """
+#     Returns all events that overlap with the proposed slot.
+#     Excludes the task being scheduled itself.
+#     """
+#     conn = get_connection()
+#     proposed_start = to_utc(start)
+#     proposed_end   = to_utc(end)
+    
+#     try:
+#         cursor = conn.cursor()
+        
+        
+#         cursor.execute("""
+#             SELECT event_id, title, start_time, end_time, flexibility_score, status
+#             FROM calendar_shadow
+#             WHERE start_time < ?
+#               AND end_time   > ?
+#               AND status = 'Scheduled'
+#               AND event_id  != ?
+#         """, (end, start, exclude_event_id))
+#         return [dict(r) for r in cursor.fetchall()]
+#     finally:
+#         conn.close()
+
+def get_conflicting_events(start: str, end: str, exclude_event_id: str) -> list[dict]:
+    proposed_start = to_naive(start)
+    proposed_end   = to_naive(end)
 
     if not proposed_start or not proposed_end:
         return []
@@ -27,7 +97,7 @@ def _get_conflicting_events(start: str, end: str, exclude_event_id: str) -> list
         cursor.execute("""
             SELECT event_id, title, start_time, end_time, flexibility_score, status
             FROM calendar_shadow
-            WHERE status NOT IN ('Completed', 'Dismissed', 'Pending_Triage')
+            WHERE status = 'Scheduled'
               AND event_id != ?
               AND start_time IS NOT NULL
               AND end_time   IS NOT NULL
@@ -38,42 +108,17 @@ def _get_conflicting_events(start: str, end: str, exclude_event_id: str) -> list
 
     conflicts = []
     for row in rows:
-        event_start = to_utc(row["start_time"])
-        event_end   = to_utc(row["end_time"])
+        event_start = to_naive(row["start_time"])
+        event_end   = to_naive(row["end_time"])
 
         if not event_start or not event_end:
             continue
 
+        # Wall-clock comparison — no timezone math
         if proposed_start < event_end and proposed_end > event_start:
             conflicts.append(row)
 
     return conflicts
-
-
-def get_conflicting_events(start: str, end: str, exclude_event_id: str) -> list[dict]:
-    """
-    Returns all events that overlap with the proposed slot.
-    Excludes the task being scheduled itself.
-    """
-    conn = get_connection()
-    proposed_start = to_utc(start)
-    proposed_end   = to_utc(end)
-    
-    try:
-        cursor = conn.cursor()
-        
-        
-        cursor.execute("""
-            SELECT event_id, title, start_time, end_time, flexibility_score, status
-            FROM calendar_shadow
-            WHERE start_time < ?
-              AND end_time   > ?
-              AND status NOT IN ('Completed', 'Dismissed', 'Pending_Triage')
-              AND event_id  != ?
-        """, (end, start, exclude_event_id))
-        return [dict(r) for r in cursor.fetchall()]
-    finally:
-        conn.close()
 
 
 def auditor_node(state: AgentState) -> AgentState:

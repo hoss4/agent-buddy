@@ -27,12 +27,19 @@ def get_pending_signals() -> list[dict]:
             FROM calendar_shadow cs
             LEFT JOIN task_metadata tm ON tm.task_id = cs.event_id
             WHERE cs.is_triaged = 0
-            ORDER BY cs.priority DESC
+            ORDER BY CASE 
+                       WHEN cs.source = 'Google_Calendar' THEN 0
+                       ELSE 1
+                     END,
+                     tm.deadline IS NULL,
+                     tm.deadline ASC,
+                     cs.priority DESC,
+                     tm.total_estimated_effort DESC
         """)
         rows = [dict(r) for r in cursor.fetchall()]
         return rows
     finally: 
-        conn.close()   
+        conn.close()
 
 
 def _empty_state(signal: dict) -> dict:
@@ -48,6 +55,7 @@ def _empty_state(signal: dict) -> dict:
         "failed_slots": [], 
         "calendar_push": None
     }
+    
 async def push_to_google_calendar(push: dict) -> bool:
     """Async Calendar push — runs in the orchestrator's event loop."""
     google_env = os.environ.copy()
@@ -98,22 +106,33 @@ async def run_cycle():
     print(f"\nOrchestrator Cycle started at {datetime.now(timezone.utc).strftime('%H:%M:%S')}")
 
     await poll_jira()
+    
     # await poll_gmail()
 
     signals = get_pending_signals()
+    
     print(f"Orchestrator {len(signals)} signal(s) to process.")
+    
+    print("List of Signals", signals)
 
 
     for signal in signals:
         try:
+            print("=" * 50 +"  Started Graph on new signal "+ "=" * 50)
             print(f"started graph on signal {signal}")
+            
             final_state=agent_buddy_graph.invoke(_empty_state(signal))
+            
             push = final_state.get("calendar_push")
+            
             if push:
-                print(f"  [calendar] Pushing to Google Calendar...")
+                
+                print(f" Pushing signal to Google Calendar...")
+                
                 await push_to_google_calendar(push)
             
         except Exception as e:
+            
             print(f"Failed on {signal['event_id']}: {e}")
 
     print("[Orchestrator] Cycle complete.")
@@ -125,15 +144,15 @@ async def start():
     
     scheduler = AsyncIOScheduler(timezone="UTC")
 
-    scheduler.add_job(run_cycle, "interval", minutes=2,
+    scheduler.add_job(run_cycle, "interval", minutes=15,
                       next_run_time=datetime.now(timezone.utc))
     
     # scheduler.add_job(strategic_calendar_sync, "interval", weeks=1,
     #                   next_run_time=datetime.now(timezone.utc) + timedelta(weeks=1))
 
 
-    scheduler.add_job(strategic_calendar_sync, "interval", minutes=2,
-                      next_run_time=datetime.now(timezone.utc))
+    # scheduler.add_job(strategic_calendar_sync, "interval", minutes=2,
+    #                   next_run_time=datetime.now(timezone.utc))
     
     print("=" * 50)
     print("  Agent Buddy Orchestrator — Started")

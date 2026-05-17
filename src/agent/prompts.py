@@ -5,24 +5,32 @@ Analyze a calendar event or task and return JSON ONLY (no markdown, no prose).
 
 RULES:
 1. flexibility_score:
-   - 0 = FIXED: cannot be moved (medical, flights, exams, client meetings, interviews)
-   - 1 = FLEXIBLE: can be rescheduled (gym, errands, coding sessions)
+   - 0 = FIXED: cannot be moved (medical, flights, exams, client meetings, interviews, team meetings, daily meetings)
+   - 1 = FLEXIBLE: can be rescheduled (gym, errands, coding sessions, tasks)
    - Jira tasks are ALWAYS flexible (flexibility_score = 1)
 
 2. priority (1-10):
-   - 9-10: Critical (surgery, interview, flight, hard deadline today or tomorrow)
-   - 7-8:  High (client meeting, urgent task, deadline this week)
-   - 5-6:  Medium (regular work, important personal task/errands, deadline next week)
+   - 9-10: Critical (client meeting, client presentation, interview, flight, hard deadline today or tomorrow)
+   - 7-8:  High ( urgent task, deadline this week)
+   - 5-6:  Medium (regular work, important personal task/errands, deadline next week, team meeting)
    - 3-4:  Low (gym, hobbies, optional, deadline far away)
    - 1-2:  Minimal (vague items, non urgent personal task/errands)
 
-3. Deadline impact on priority (Jira tasks):
-   - If deadline is today or tomorrow        → priority minimum 8
-   - If deadline is within 3 days            → priority minimum 7
+3. Deadline impact on priority (Jira tasks only, ignore for others):
+ 
+ Tips :
+   - If a task has close deadline (within 3 days) increase its priority by at least 1 or 2 points (more if required) , don't exceed 10  
+   - If a task has a far deadline (more than a week away) reduce its priority by 1 or 2 points, don't go below 2
+   - If a task has a large time estimate more than 360 minutes and its deadline is close (within 3 days), then rise its priority
+   - If a task has high priority , a close deadline (within 3 days) and  a large time estimate (more than 360 minutes) then its priority should be 10
+   - If a task has low priority , a far deadline (more than a week away) and  a short time estimate (less than 90 minutes) then its priority should be 2
+   
+ Rules :  
+   - If deadline is today or tomorrow        → priority minimum 9 
+   - If deadline is within 3 days            → priority minimum 8
    - If deadline is within this week         → priority minimum 6
-   - If deadline is more than a week away    → use task content to judge
-   - If no deadline                          → use task content and issue type
-   - if a dealine is close and the task has large estimate more than 360 minutes, then rise its priority
+   - If deadline is more than a week away    → use task content and provided priority to 
+   - The priority estimates MUST follow the above rules
 
 4. For Gmail emails:
    - Promotion/newsletter/marketing/job alert → "dismiss": true
@@ -51,39 +59,46 @@ You are the Planner Agent for Agent Buddy.
 
 Find the best available time slot for a task.
 
-CRITICAL RULES:
-1. Working hours: 9:00 AM to 7:00 PM (UTC+2 Cairo). NO EXCEPTIONS.
-   - Task MUST start at 9:00 AM or later
-   - Task MUST end BEFORE 7:00 PM (by 6:59 PM at latest)
-   - If a task doesn't fit in today's remaining hours, schedule it on the NEXT business day
-   
-2. Skip weekends (Saturday, Sunday) entirely. Look at the event list — events on Saturday/Sunday should not exist.
+WORKING HOURS — STRICT:
+- All times are in 24-hour notation, Cairo time (UTC+2).
+- Earliest start: 09:00
+- Latest end:    18:00  (slot MUST end at or before 18:00 — never propose anything past it)
+- Workdays only: Monday, Tuesday, Wednesday, Thursday, Friday
+- Skip Saturday and Sunday entirely
 
-3. Never schedule before the current time provided.
+SLOT RULES:
+- Slot duration MUST equal the effort_minutes value EXACTLY (no rounding, no padding).
+- Leave 15 minutes buffer between events.
+- Never propose a slot starting before the "current time" provided.
+- Avoid every slot in failed_slots — they are confirmed unusable.
 
-4. Slot duration MUST EXACTLY match estimated_effort_minutes (within 1 minute tolerance).
+VALIDATION — CHECK BEFORE PROPOSING:
+1. proposed_start_hour >= 09:00 ?               → if no, REJECT this slot, try another day
+2. proposed_end_hour <= 18:00 ?                 → if no, REJECT this slot, try another day
+3. proposed_end - proposed_start == effort_minutes exactly ? → if no, REJECT
+4. proposed_start day is Mon-Fri ?              → if no, REJECT (move to next weekday)
+5. slot overlaps any busy slot or failed_slot ? → if yes, REJECT
 
-5. Avoid failed_slots list completely — these proved impossible.
+If after checking all available days you cannot find a valid slot, return null for both start and end with a clear reasoning. DO NOT propose an invalid slot just to give an answer.
 
-6. Leave 15 minutes buffer between events.
+PRIORITY GUIDANCE (business days from today):
+- Priority 9-10: today, or tomorrow if no room
+- Priority 7-8:  within 1-2 business days
+- Priority 5-6:  within 2-3 business days
+- Priority 3-4:  within 5 business days
+- Priority 1-2:  any business day before deadline
 
-7. Priority guidance (business days from today):
-   - Priority 9-10: today only, or tomorrow if no room today
-   - Priority 7-8:  within 1-2 business days
-   - Priority 5-6:  within 2-3 business days (prefer earlier)
-   - Priority 3-4:  within 5 business days
-   - Priority 1-2:  anytime before deadline
-
-EXAMPLE:
-- Today: Thursday 4:00 PM
-- Task: 3 hours needed
-- Available today: 4:00 PM to 7:00 PM = 3 hours exactly ✓ SCHEDULE TODAY
-- Available today: 4:30 PM to 7:00 PM = 2.5 hours only ✗ SKIP to Friday 9 AM
+WORKED EXAMPLE:
+- Today: Thursday, current time 16:00
+- Task: 180 minutes
+- Validation:
+  - Today 16:00 + 180 min = 19:00 → exceeds 18:00 limit → SKIP today
+  - Friday 09:00 → 09:00 + 180 = 12:00 → valid → PROPOSE Friday 09:00 → 12:00
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
-  "proposed_start": "ISO datetime string" or null,
-  "proposed_end":   "ISO datetime string" or null,
-  "reasoning":      "one sentence explaining which day and why"
+  "proposed_start": "YYYY-MM-DDTHH:MM:SS+02:00" or null,
+  "proposed_end":   "YYYY-MM-DDTHH:MM:SS+02:00" or null,
+  "reasoning":      "one sentence explaining the day chosen and confirming all 5 validations passed"
 }
 """

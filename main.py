@@ -15,10 +15,10 @@ from src.database.db_utils import (
 )
 
 async def run():
-    # 1. Ensure DB schema exists
+
     init_db()
 
-    # 2. sync if first time
+    # sync if its the first time
     if is_first_run():
         print("run first sync")
         await sync_google_calendar()

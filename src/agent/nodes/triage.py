@@ -105,11 +105,17 @@ def triage_node(state: dict) -> dict:
     try:
         decision = classify(signal)
         apply_to_db(signal["event_id"], signal["source"], decision)
+        
+        print("-" * 50 +"  triage result "+ "-" * 50)
+
+    
 
         print(f"  [triage] flex={decision['flexibility_score']} "
               f"pri={decision['priority']} dismiss={decision.get('dismiss', False)}"
               f"effort={decision['estimated_effort_minutes']} ")
         print(f"  [triage] reasoning: {decision['reasoning']}")
+        
+        print("-" * 100)
 
         return {**state, "triage_decision": decision}
 

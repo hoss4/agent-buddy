@@ -8,16 +8,16 @@ from src.agent.prompts import PLANNER_PROMPT
 from src.database.db_utils import get_connection
 
 MAX_RETRIES = 3
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+llm = ChatOpenAI(model="gpt-5.4-mini", temperature=0)
+#llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
 CAIRO_OFFSET = timezone(timedelta(hours=2))
 
 def get_busy_slots(days_ahead: int = 14) -> list[dict]:
-    """
-    Returns all scheduled/confirmed events in the next N days.
-    This is what the Planner sees as "occupied time".
-    """
+
     now     = datetime.now(timezone.utc)
-    horizon = (now + timedelta(days=days_ahead)).isoformat()
+    end_date = (now + timedelta(days=days_ahead)).isoformat()
+    
 
     conn = get_connection()
     try:
@@ -27,28 +27,85 @@ def get_busy_slots(days_ahead: int = 14) -> list[dict]:
             FROM calendar_shadow
             WHERE start_time >= ?
               AND start_time <= ?
-              AND status NOT IN ('Dismissed', 'Pending_Triage', 'Completed')
+              AND status = 'Scheduled'
             ORDER BY start_time ASC
-        """, (now.isoformat(), horizon))
+        """, (now.isoformat(), end_date))
         return [dict(r) for r in cursor.fetchall()]
     finally:
         conn.close()
 
 
+from datetime import datetime, timezone, timedelta
+CAIRO_OFFSET = timezone(timedelta(hours=2))
+
 def format_busy_slots(busy: list[dict]) -> str:
     if not busy:
         return "No events scheduled in the next 14 days."
+
     lines = []
     for slot in busy:
         try:
-            dt = datetime.fromisoformat(slot["start_time"])
-            day_label = dt.strftime("%A")  # "Monday", "Tuesday", etc
-        except:
-            day_label = "?"
-        flex = "Flexible" if slot["flexibility_score"] == 1 else "Fixed"
-        lines.append(f"  - {day_label} {slot['start_time']} → {slot['end_time']}: "
-            f"{slot['title']} [{flex}]")
+            # Strip timezone — treat as Cairo wall-clock time
+            raw_start = slot["start_time"].split("+")[0].split("Z")[0]
+            raw_end   = slot["end_time"].split("+")[0].split("Z")[0]
+            
+            start = datetime.fromisoformat(raw_start)
+            end   = datetime.fromisoformat(raw_end)
+
+            day_label  = start.strftime("%A %Y-%m-%d")
+            start_time = start.strftime("%H:%M")
+            end_time   = end.strftime("%H:%M")
+            duration   = int((end - start).total_seconds() / 60)
+        except Exception as e:
+            day_label  = "?"
+            start_time = slot["start_time"]
+            end_time   = slot["end_time"]
+            duration   = "?"
+
+        
+        if slot["flexibility_score"] == 1 :
+            flex = "Flexible" 
+        else:
+            flex = "Fixed"
+        lines.append(
+            f"  - {day_label} | {start_time} → {end_time} ({duration} min) | "
+            f"{slot['title']} [{flex}]"
+        )
     return "\n".join(lines)
+
+
+# def format_busy_slots(busy: list[dict]) -> str:
+#     if not busy:
+#         return "No events scheduled in the next 14 days."
+
+#     lines = []
+#     for slot in busy:
+#         try:
+#             start = datetime.fromisoformat(slot["start_time"]).astimezone(CAIRO_OFFSET)
+#             end   = datetime.fromisoformat(slot["end_time"]).astimezone(CAIRO_OFFSET)
+
+#             day_label  = start.strftime("%A %Y-%m-%d")
+#             start_time = start.strftime("%H:%M")
+#             end_time   = end.strftime("%H:%M")
+#             duration   = int((end - start).total_seconds() / 60)
+#         except Exception:
+#             day_label  = "?"
+#             start_time = slot["start_time"]
+#             end_time   = slot["end_time"]
+#             duration   = "?"
+
+        
+#         if slot["flexibility_score"] == 1 :
+#             flex = "Flexible" 
+#         else :
+#             flex = "Fixed"
+        
+        
+#         lines.append(
+#             f"  - {day_label} | {start_time} → {end_time} ({duration} min) | "
+#             f"{slot['title']} [{flex}]"
+#         )
+#     return "\n".join(lines)
 
 
 def get_effort(state: dict) -> int:
@@ -100,7 +157,7 @@ def planner_node(state: AgentState) -> AgentState:
 
     user_msg = f"""
 
-TODAY: {day_name.upper()}, {today_str} (Cairo, UTC+2)
+TODAY: {day_name.upper()}, {today_str} (24-hour, Cairo UTC+2)
 DO NOT propose any slot starting before: {now_str}
 
 Task title: {signal['title']}
@@ -115,13 +172,8 @@ Current busy schedule (next 14 days — note the day names):
 Previously failed slots (do NOT propose these):
 {failed_slots_str}
 
-Find a slot for exactly {effort} minutes. Remember:
-- Weekends are Saturday and Sunday (skip them)
-- Priority {signal.get('priority', 5)} means schedule within 3-4 days if possible
-- Today is {day_name} — count forward from today
-- Leave at least 15 minutes buffer between events.
-Find exactly {effort} minutes. If the task doesn't fit today (remaining hours < {effort} min), 
-schedule it later. NEVER schedule outside 9 AM to 7 PM.
+Find exactly {effort} minutes within working hours (09:00-18:00, Mon-Fri).
+If you can't fit it today, try the next business day. Never propose a slot ending after 18:00.
 """
 
 
@@ -139,6 +191,8 @@ schedule it later. NEVER schedule outside 9 AM to 7 PM.
 
         proposed = json.loads(raw.strip())
         
+        print("-" * 50 +"  Planner result "+ "-" * 50)
+        
         if not proposed.get("proposed_start") or not proposed.get("proposed_end"):
             print(f"  [planner] Could not find a valid slot.")
             print(f"  [planner] Reasoning: {proposed.get('reasoning', 'No reasoning provided')}")
@@ -152,11 +206,15 @@ schedule it later. NEVER schedule outside 9 AM to 7 PM.
         print(f"  [planner] Proposed: {proposed['proposed_start']} → {proposed['proposed_end']}")
         print(f"  [planner] Reasoning: {proposed['reasoning']}")
 
+        print("-" * 100)
+        
         return {
             **state,
             "proposed_slot": proposed,
             "retry_count":   retry_count + 1,
         }
+        
+        
 
     except Exception as e:
         err = f"Planner failed for {signal['event_id']}: {e}"

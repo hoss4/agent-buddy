@@ -1,18 +1,18 @@
 from typing import TypedDict, Optional
 from langgraph.graph import StateGraph, END
 
-#from src.agent.nodes.load_signal import load_signal_node
 from src.agent.nodes.triage import triage_node
 from src.agent.nodes.planner import planner_node
 from src.agent.nodes.auditor import auditor_node
 from src.agent.nodes.executor import executor_node
 from src.agent.nodes.hitl_node  import hitl_node
+from src.agent.nodes.scheduler import scheduler_node
 from src.agent.state import AgentState
 
 
 
 
-# ROUTERS (conditional edges)
+# ROUTERS
 
 
 def after_triage_router(state: AgentState) -> str:
@@ -23,17 +23,19 @@ def after_triage_router(state: AgentState) -> str:
 
     signal = state["current_signal"]
 
-    # jira tasks need the Planner
+    # jira tasks need the planner
+    # if signal["source"] == "Jira" :
+    #     return "planner"
     if signal["source"] == "Jira" :
-        return "planner"
+        return "scheduler"
         
         
-    # gmail is already scheduled , go to END
+    # gmail is already scheduled , go to end
     if signal["source"] == "Google_Calendar":
         return END
     
     
-    # # Gmail events with extracted datetime go to executor
+  
     # if signal.get("start_time") or decision.get("extracted_start"):
     #     return "executor"
     
@@ -44,7 +46,7 @@ def after_auditor_router(state: dict) -> str:
     proposed    = state.get("proposed_slot")
     retry_count = state.get("retry_count", 0)
 
-    # Planner exhausted retries or didn't propose
+    # planner exhausted retries or didn't propose
     if not proposed:
         print("  [router] Max retries — escalating to HITL.")
         return "hitl_gate"
@@ -53,7 +55,6 @@ def after_auditor_router(state: dict) -> str:
     if not state.get("conflict_found"):
         return "executor"
 
-    conflict = state.get("conflicting_event", {})
     
     # check if both are Fixed — only then go to HITL immediately
     signal_flex   = state["current_signal"].get("flexibility_score", 1)
@@ -100,39 +101,51 @@ def after_hitl_router(state: dict) -> str:
 # GRAPH
 
 def build_graph():
+    
     graph = StateGraph(AgentState)
 
-    #add all nodes
-    #graph.add_node("load_signal", load_signal_node)
+    # add all nodes
+    
     graph.add_node("triage",triage_node)
-    graph.add_node("planner", planner_node)
-    graph.add_node("auditor", auditor_node)
+    # graph.add_node("planner", planner_node)
+    # graph.add_node("auditor", auditor_node)
     graph.add_node("executor", executor_node)
     graph.add_node("hitl_gate", hitl_node)
+    graph.add_node("scheduler",scheduler_node)
 
-    #create graph
-    #graph.set_entry_point("load_signal")
+#    graph.add_node("resolver", resolver_node)
+
+    # create graph
+
     graph.set_entry_point("triage")
     
-    #graph.add_edge("load_signal", "triage")
   
     graph.add_conditional_edges(
         "triage", 
         after_triage_router,{
-            "planner" : "planner",
-            #"executor": "executor",
+            #"planner" : "planner",
+            "scheduler":"scheduler",
             END : END,},
     )
 
-    graph.add_edge("planner", "auditor")
+    # graph.add_edge("planner", "auditor")
 
     
+    # graph.add_conditional_edges(
+    #     "auditor",
+    #     after_auditor_router,
+    #     {
+    #         "executor":  "executor",
+    #         "planner":   "planner",
+    #         "hitl_gate": "hitl_gate"
+    #     },
+    # )
+    
     graph.add_conditional_edges(
-        "auditor",
+        "scheduler",
         after_auditor_router,
         {
             "executor":  "executor",
-            "planner":   "planner",
             "hitl_gate": "hitl_gate"
         },
     )
@@ -150,5 +163,4 @@ def build_graph():
     return graph.compile()
 
 
-#single task handling, imported by the orchestrator
 agent_buddy_graph = build_graph()
