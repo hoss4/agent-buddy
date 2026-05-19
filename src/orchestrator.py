@@ -147,7 +147,7 @@ async def start():
     
     scheduler = AsyncIOScheduler(timezone="UTC")
 
-    scheduler.add_job(run_cycle, "interval", minutes=15,
+    scheduler.add_job(run_cycle, "interval", minutes=3,
                       next_run_time=datetime.now(timezone.utc))
     
     # scheduler.add_job(strategic_calendar_sync, "interval", weeks=1,

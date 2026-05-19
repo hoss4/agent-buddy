@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from src.database.db_utils import get_connection, log_audit_action_conn
 
-CAIRO_OFFSET = timezone(timedelta(hours=2))
+# CAIRO_OFFSET = timezone(timedelta(hours=2))
 
 
 def to_naive(dt_str: str) -> datetime:
@@ -16,22 +16,27 @@ def to_naive(dt_str: str) -> datetime:
 
 
 def get_effort(state: dict) -> int:
+    
     triage = state.get("triage_decision") or {}
     if triage.get("estimated_effort_minutes"):
+        print("getting time estimate from triage")
         return triage["estimated_effort_minutes"]
-    return state["current_signal"].get("total_estimated_effort") or 60
 
+    effort = state["current_signal"].get("total_estimated_effort")
+    if effort:
+        print("getting time estimate from signal info")
+        return effort
 
+    return 60
+
+# gets tasks that hasn't started , ends before deadline and has enough time  
 def get_candidates(failed_task: dict, effort: int) -> list[dict]:
-    """
-    All scheduled Jira tasks (excluding the failed one) whose slot:
-    - is in the future
-    - ends before failed task's deadline
-    - is at least `effort` minutes long
-    """
-    now = datetime.now(CAIRO_OFFSET).replace(tzinfo=None)
+    
+    now  = datetime.now().replace(microsecond=0)
+    
     deadline = failed_task.get("deadline")
     deadline_dt = None
+    
     if deadline:
         try:
             deadline_dt = datetime.fromisoformat(deadline).replace(hour=18, minute=0)
@@ -45,9 +50,9 @@ def get_candidates(failed_task: dict, effort: int) -> list[dict]:
             SELECT event_id, title, start_time, end_time, priority,
                 flexibility_score, source
             FROM calendar_shadow
-            WHERE status            = 'Scheduled'
-            AND source            = 'Jira'
-            AND event_id         != ?
+            WHERE status = 'Scheduled'
+            AND source = 'Jira'
+            AND event_id != ?
             AND start_time IS NOT NULL
             AND end_time   IS NOT NULL
             ORDER BY start_time ASC
@@ -57,18 +62,51 @@ def get_candidates(failed_task: dict, effort: int) -> list[dict]:
         conn.close()
 
     valid = []
-    for r in rows:
-        bs = to_naive(r["start_time"])
-        be = to_naive(r["end_time"])
-        if not bs or not be or bs <= now:
+    for row in rows:
+        busy_slot_start = to_naive(row["start_time"])
+        busy_slot_end = to_naive(row["end_time"])
+        if not busy_slot_start or not busy_slot_end or busy_slot_start <= now:
             continue
-        if deadline_dt and be > deadline_dt:
+        if deadline_dt and busy_slot_end > deadline_dt:
             continue
-        duration = (be - bs).total_seconds() / 60
+        duration = (busy_slot_end - busy_slot_start).total_seconds() / 60
         if duration < effort:
             continue
-        valid.append(r)
+        valid.append(row)
     return valid
+
+
+def best_match_lower_flex(candidates: list[dict], failed_priority:int ) -> dict | None:
+    filtered=[]
+    for candidate in candidates:
+        if candidate["flexibility_score"]==1 and candidate["priority"] < failed_priority :
+            filtered.append(candidate) 
+    if not filtered:
+        return None
+    print(filtered)
+    filtered.sort(key=lambda c: (c["priority"], c["start_time"]))
+    return filtered[0]
+
+def best_match_higher_flex(candidates: list[dict], failed_priority: int) -> dict | None:
+    filtered = []
+    for candidate in candidates:
+        if candidate["flexibility_score"] == 1 and candidate["priority"] >= failed_priority:
+            filtered.append(candidate)
+    if not filtered:
+        return None
+    filtered.sort(key=lambda c: (c["priority"], c["start_time"]))
+    return filtered[0]
+
+
+def best_match_lower_fixed(candidates: list[dict], failed_priority: int) -> dict | None:
+    filtered = []
+    for candidate in candidates:
+        if candidate["flexibility_score"] == 0 and candidate["priority"] < failed_priority:
+            filtered.append(candidate)
+    if not filtered:
+        return None
+    filtered.sort(key=lambda c: (c["priority"], c["start_time"]))
+    return filtered[0]
 
 
 def best_match(candidates: list[dict], predicate) -> dict | None:
@@ -126,9 +164,10 @@ def resolver_node(state: dict) -> dict:
     failed_task = state["current_signal"]
     effort      = get_effort(state)
 
-    print(f"  [resolver] Failed to schedule '{failed_task['title']}' "
-          f"(priority {failed_task.get('priority', 5)}, effort {effort}min)")
+    print(f"  [resolver] Failed to schedule : '{failed_task['title']}' ")
+    print(f"(priority : {failed_task.get('priority')}, effort : {effort} min)")
 
+    
     candidates = get_candidates(failed_task, effort)
     print(f"  [resolver] Found {len(candidates)} eligible candidate slot(s) within deadline.")
 
@@ -141,16 +180,20 @@ def resolver_node(state: dict) -> dict:
             "hitl_candidates":  None,
         }
 
-    failed_priority = failed_task.get("priority", 5)
+    failed_priority = failed_task.get("priority")
 
-    # Tier 1: Auto-swap (Flexible + lower priority)
-    ideal = best_match(
-        candidates,
-        lambda c: c["flexibility_score"] == 1 and c["priority"] < failed_priority,
-    )
+    # attempt 1: Auto-swap if flexible and lower priority
+    # ideal = best_match(
+    #     candidates,
+    #     lambda c: c["flexibility_score"] == 1 and c["priority"] < failed_priority,
+    # )
+    
+    ideal = best_match_lower_flex(candidates,failed_priority)
+    
+    
     if ideal:
         freed = apply_auto_swap(failed_task["event_id"], ideal)
-        print(f"  [resolver] ✅ Auto-swap: displaced '{ideal['title']}' "
+        print(f"  [resolver] Auto-swap: displaced '{ideal['title']}' "
               f"(priority {ideal['priority']}, Flexible)")
         return {
             **state,
@@ -169,16 +212,21 @@ def resolver_node(state: dict) -> dict:
             },
         }
 
-    # Tier 2: HITL with options
-    higher_flex = best_match(
-        candidates,
-        lambda c: c["flexibility_score"] == 1 and c["priority"] >= failed_priority,
-    )
-    lower_fixed = best_match(
-        candidates,
-        lambda c: c["flexibility_score"] == 0 and c["priority"] < failed_priority,
-    )
+    # attempt 2: HITL with options
+    # higher_flex = best_match(
+    #     candidates,
+    #     lambda c: c["flexibility_score"] == 1 and c["priority"] >= failed_priority,
+    # )
+    
+    higher_flex = best_match_higher_flex(candidates,failed_priority)
+    
+    # lower_fixed = best_match(
+    #     candidates,
+    #     lambda c: c["flexibility_score"] == 0 and c["priority"] < failed_priority,
+    # )
 
+    lower_fixed = best_match_lower_fixed(candidates,failed_priority)
+    
     hitl_options = []
     if higher_flex:
         hitl_options.append({"task": higher_flex, "label": "higher_priority_flexible"})
