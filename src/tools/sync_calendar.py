@@ -141,7 +141,7 @@ async def sync_google_calendar():
                         end_time=end_time,
                         original_start_time=start_time,
                         priority=5,
-                        flexibility_score=1,
+                        flexibility_score=0,
                         status="Scheduled",
                     )
                     saved += 1

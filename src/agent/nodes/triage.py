@@ -59,8 +59,7 @@ def apply_to_db(event_id: str, source: str, decision: dict):
     else:
         cursor.execute("""
             UPDATE calendar_shadow
-            SET flexibility_score = ?,
-                priority          = ?,
+            SET priority          = ?,
                 status            = CASE
                                           WHEN status = 'Scheduled' THEN 'Scheduled'
                                           ELSE 'Confirmed'
@@ -70,7 +69,6 @@ def apply_to_db(event_id: str, source: str, decision: dict):
                 end_time          = COALESCE(?, end_time)
             WHERE event_id = ?
         """, (
-            decision["flexibility_score"],
             decision["priority"],
             decision.get("extracted_start"),
             decision.get("extracted_end"),
@@ -91,7 +89,7 @@ def apply_to_db(event_id: str, source: str, decision: dict):
             conn=conn,
             event_id=event_id,
             change_type="Created",
-            reasoning_statement=f"Triage: flex={decision['flexibility_score']} pri={decision['priority']}. {decision['reasoning']}",
+            reasoning_statement=f"Triage:  pri={decision['priority']}. {decision['reasoning']}",
         )
 
     conn.commit()
@@ -110,8 +108,7 @@ def triage_node(state: dict) -> dict:
 
     
 
-        print(f"  [triage] flex={decision['flexibility_score']} "
-              f"pri={decision['priority']} dismiss={decision.get('dismiss', False)}"
+        print(f"pri={decision['priority']} dismiss={decision.get('dismiss', False)}"
               f"effort={decision['estimated_effort_minutes']} ")
         print(f"  [triage] reasoning: {decision['reasoning']}")
         

@@ -401,7 +401,7 @@ async def strategic_calendar_sync():
                             end_time=end_time,
                             original_start_time=start_time,
                             priority=5,
-                            flexibility_score=1,
+                            flexibility_score=0,
                             status="Scheduled",
                         )
 
