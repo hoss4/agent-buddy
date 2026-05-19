@@ -51,7 +51,6 @@ def get_candidates(failed_task: dict, effort: int) -> list[dict]:
                 flexibility_score, source
             FROM calendar_shadow
             WHERE status = 'Scheduled'
-            AND source = 'Jira'
             AND event_id != ?
             AND start_time IS NOT NULL
             AND end_time   IS NOT NULL
@@ -63,6 +62,7 @@ def get_candidates(failed_task: dict, effort: int) -> list[dict]:
 
     valid = []
     for row in rows:
+        print("row : ",row)
         busy_slot_start = to_naive(row["start_time"])
         busy_slot_end = to_naive(row["end_time"])
         if not busy_slot_start or not busy_slot_end or busy_slot_start <= now:
@@ -73,6 +73,7 @@ def get_candidates(failed_task: dict, effort: int) -> list[dict]:
         if duration < effort:
             continue
         valid.append(row)
+        print("valid : ",valid)
     return valid
 
 
@@ -116,6 +117,16 @@ def best_match(candidates: list[dict], predicate) -> dict | None:
     filtered.sort(key=lambda c: (c["priority"], c["start_time"]))
     return filtered[0]
 
+
+def get_failed_priority(state: dict) -> int:
+    
+    triage = state.get("triage_decision") or {}
+    print("triage : ", triage)
+    if triage.get("priority"):
+        print("taking triage priority : ", triage.get("priority"))
+        return triage["priority"]
+    print("taking signal priority : ",state["current_signal"].get("priority", 5))
+    return state["current_signal"].get("priority", 5)
 
 def apply_auto_swap(failed_event_id: str, displaced: dict) -> dict:
     """Mark displaced as Pending_Triage, slot failed task into its place."""
@@ -180,7 +191,10 @@ def resolver_node(state: dict) -> dict:
             "hitl_candidates":  None,
         }
 
-    failed_priority = failed_task.get("priority")
+
+  
+    failed_priority = get_failed_priority(state)
+    print("failed tasks priority : ", failed_priority)
 
     # attempt 1: Auto-swap if flexible and lower priority
     # ideal = best_match(
