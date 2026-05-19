@@ -48,7 +48,7 @@ def get_candidates(failed_task: dict, effort: int) -> list[dict]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT event_id, title, start_time, end_time, priority,
-                flexibility_score, source
+                flexibility_score, source, google_event_id 
             FROM calendar_shadow
             WHERE status = 'Scheduled'
             AND event_id != ?
@@ -132,6 +132,8 @@ def apply_auto_swap(failed_event_id: str, displaced: dict) -> dict:
     """Mark displaced as Pending_Triage, slot failed task into its place."""
     freed_start = displaced["start_time"]
     freed_end   = displaced["end_time"]
+    google_id   = displaced.get("google_event_id")
+    print("google event id of element to be swapped : ", google_id)
 
     conn = get_connection()
     try:
@@ -142,7 +144,8 @@ def apply_auto_swap(failed_event_id: str, displaced: dict) -> dict:
             SET status     = 'Pending_Triage',
                 is_triaged = 0,
                 start_time = NULL,
-                end_time   = NULL
+                end_time   = NULL,
+                google_event_id = NULL
             WHERE event_id = ?
         """, (displaced["event_id"],))
 
@@ -160,7 +163,7 @@ def apply_auto_swap(failed_event_id: str, displaced: dict) -> dict:
         """, (freed_start, freed_end, failed_event_id))
 
         log_audit_action_conn(
-            conn, failed_event_id, "Rescheduled",
+            conn, failed_event_id, "Scheduled",
             f"Auto-swap: displaced '{displaced['title']}' (priority {displaced['priority']}).",
         )
 
@@ -168,7 +171,7 @@ def apply_auto_swap(failed_event_id: str, displaced: dict) -> dict:
     finally:
         conn.close()
 
-    return {"start": freed_start, "end": freed_end}
+    return {"start": freed_start, "end": freed_end, "google_event_id": google_id}
 
 
 def resolver_node(state: dict) -> dict:
@@ -207,8 +210,14 @@ def resolver_node(state: dict) -> dict:
     
     if ideal:
         freed = apply_auto_swap(failed_task["event_id"], ideal)
+        
+        if freed.get("google_event_id"):
+            deletes=freed.get("google_event_id")
+            
         print(f"  [resolver] Auto-swap: displaced '{ideal['title']}' "
               f"(priority {ideal['priority']}, Flexible)")
+        
+        print("deleting calendar event : ",deletes)
         return {
             **state,
             "resolver_outcome": "auto_swap",
@@ -224,6 +233,7 @@ def resolver_node(state: dict) -> dict:
                 "start":       freed["start"],
                 "end":         freed["end"],
             },
+            "calendar_delete": deletes,
         }
 
     # attempt 2: HITL with options

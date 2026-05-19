@@ -22,43 +22,33 @@ def is_first_run()-> bool:
     conn.close()
     return count == 0    
 
-def upsert_calendar_event(
-    event_id: str,
-    source: str,
-    title: str,
-    description: str,
-    start_time: str,
-    end_time: str,
-    original_start_time: str,
-    priority: int = 5,
-    flexibility_score: int = 1,
-    status: str = "Tentative",
-):
-    """Inserts a new event or updates an existing one in calendar_shadow."""
+def upsert_calendar_event(event_id, google_event_id, source, title, description,
+                          start_time, end_time, original_start_time,
+                          priority, flexibility_score, status):
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO calendar_shadow 
-        (event_id, source, title, description, start_time, end_time,
-         original_start_time, priority, flexibility_score, status, last_synced)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(event_id) DO UPDATE SET
-            title               = excluded.title,
-            description         = excluded.description,
-            start_time          = excluded.start_time,
-            end_time            = excluded.end_time,
-            status              = excluded.status,
-            last_synced         = CURRENT_TIMESTAMP
-        """,
-        (
-            event_id, source, title, description, start_time, end_time,
-            original_start_time, priority, flexibility_score, status,
-        ),
-    )
-    conn.commit()
-    conn.close()
-
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO calendar_shadow
+            (event_id, google_event_id, source, title, description,
+             start_time, end_time, original_start_time,
+             priority, flexibility_score, status, is_triaged, last_synced)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(event_id) DO UPDATE SET
+                google_event_id = excluded.google_event_id,
+                title           = excluded.title,
+                description     = excluded.description,
+                start_time      = excluded.start_time,
+                end_time        = excluded.end_time,
+                last_synced     = CURRENT_TIMESTAMP
+        """, (event_id, google_event_id, source, title, description,
+              start_time, end_time, original_start_time,
+              priority, flexibility_score, status))
+        conn.commit()
+    finally:
+        conn.close()
+        
+        
 def upsert_task_metadata(
     task_id: str,
     title: str,

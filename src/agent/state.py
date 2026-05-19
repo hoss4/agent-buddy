@@ -7,10 +7,8 @@ class AgentState(TypedDict):
     resolver_outcome: Optional[str]
     swap_candidate: Optional[dict]
     hitl_candidates: Optional[list]
-    # conflict_found: bool
-    # conflicting_event: Optional[dict]
-    # retry_count: int
     hitl_decision: Optional[str]
     errors: list[str]
     failed_slots: list[dict]
     calendar_push: Optional[dict]
+    calendar_delete: Optional[str] 

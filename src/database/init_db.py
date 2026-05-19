@@ -24,6 +24,7 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS calendar_shadow (
             event_id TEXT PRIMARY KEY,
+            google_event_id  TEXT,  
             source TEXT NOT NULL,
             title TEXT,
             description TEXT,

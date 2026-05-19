@@ -129,6 +129,7 @@ async def poll_jira():
                             )
                             upsert_calendar_event(
                                 event_id=task_id,
+                                google_event_id = None,
                                 source="Jira",
                                 title=task["title"],
                                 description=task["description"],
@@ -394,6 +395,7 @@ async def strategic_calendar_sync():
 
                         upsert_calendar_event(
                             event_id=gcal_id,
+                            google_event_id = gcal_id,
                             source="Google_Calendar",
                             title=title,
                             description=description,

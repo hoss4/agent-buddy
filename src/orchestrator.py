@@ -1,3 +1,5 @@
+import re
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import os
@@ -47,19 +49,57 @@ def _empty_state(signal: dict) -> dict:
         "current_signal": signal,
         "triage_decision": None,
         "proposed_slot": None,
-        # "conflict_found": False,
-        # "conflicting_event": None,
-        # "retry_count": 0,
         "resolver_outcome": None,
         "swap_candidate": None,
         "hitl_candidates": None,
         "hitl_decision": None,
         "errors": [],
         "failed_slots": [], 
-        "calendar_push": None
+        "calendar_push": None,
+        "calendar_delete": None,
     }
+ 
+
+async def delete_from_google_calendar(google_event_id: str) -> bool:
+    """Deletes an event from Google Calendar by its ID."""
+    google_env = os.environ.copy()
+    google_env["GOOGLE_CLIENT_ID"]     = os.getenv("GOOGLE_CLIENT_ID", "")
+    google_env["GOOGLE_CLIENT_SECRET"] = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    google_env["GOOGLE_REFRESH_TOKEN"] = os.getenv("GOOGLE_REFRESH_TOKEN", "")
+
+    server_params = StdioServerParameters(
+        command="npx",
+        args=["-y", "@gongrzhe/server-calendar-mcp"],
+        env=google_env,
+    )
+
+    try:
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                await session.call_tool(
+                    "delete_event",
+                    arguments={"eventId": google_event_id},
+                )
+                print(f"  [calendar]  Deleted event: {google_event_id}")
+                return True
+    except Exception as e:
+        print(f"  [calendar] Delete failed for {google_event_id}: {e}")
+        return False
+
+def store_google_event_id(event_id: str, google_event_id: str):
+    conn = get_connection()
+    try:
+        conn.cursor().execute("""
+            UPDATE calendar_shadow
+            SET google_event_id = ?
+            WHERE event_id = ?
+        """, (google_event_id, event_id))
+        conn.commit()
+    finally:
+        conn.close() 
     
-async def push_to_google_calendar(push: dict) -> bool:
+async def push_to_google_calendar(push: dict) -> str:
     """Async Calendar push — runs in the orchestrator's event loop."""
     google_env = os.environ.copy()
     google_env["GOOGLE_CLIENT_ID"]     = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -97,11 +137,17 @@ async def push_to_google_calendar(push: dict) -> bool:
 
                 raw = response.content[0].text.strip()
                 print(f"  [calendar] Event created: {raw[:100]}")
-                return True
+                match = re.search(r"ID:\s*(\S+)", raw)
+                if match:
+                    print("event id : ", match.group(1))
+                    return match.group(1)
+                else:
+                    return None
+                
 
     except Exception as e:
         print(f"  calendar Push failed: {e}")
-        return False
+        return None
     
 
 
@@ -126,13 +172,20 @@ async def run_cycle():
             
             final_state=agent_buddy_graph.invoke(_empty_state(signal))
             
+   
+            google_id = final_state.get("calendar_delete")
+            if google_id:
+                await delete_from_google_calendar(google_id)
+                
             push = final_state.get("calendar_push")
             
             if push:
                 
                 print(f" Pushing signal to Google Calendar...")
                 
-                await push_to_google_calendar(push)
+                google_event_id = await push_to_google_calendar(push)
+                if google_event_id:
+                    store_google_event_id(signal["event_id"], google_event_id)
             
         except Exception as e:
             

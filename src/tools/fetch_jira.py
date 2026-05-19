@@ -75,6 +75,7 @@ async def sync_jira_tasks():
 
                     upsert_calendar_event(
                         event_id=task_id,
+                        google_event_id = None,
                         source="Jira",
                         title=task["title"],
                         description=task["description"],

@@ -134,6 +134,7 @@ async def sync_google_calendar():
 
                     upsert_calendar_event(
                         event_id=f"gcal_{event_id}",
+                        google_event_id = event_id, 
                         source="Google_Calendar",
                         title=title,
                         description=description,

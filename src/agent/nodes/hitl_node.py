@@ -3,23 +3,37 @@ from src.database.db_utils import get_connection, log_audit_action_conn
 
 def apply_swap(failed_event_id: str, displaced: dict) -> dict:
     freed_start = displaced["start_time"]
-    freed_end   = displaced["end_time"]
+    freed_end = displaced["end_time"]
+    source = displaced.get("source", "Jira")
+    google_id = displaced.get("google_event_id")
 
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE calendar_shadow
-            SET status     = 'Pending_Triage',
-                is_triaged = 0,
-                start_time = NULL,
-                end_time   = NULL
-            WHERE event_id = ?
-        """, (displaced["event_id"],))
-        log_audit_action_conn(
-            conn, displaced["event_id"], "Displaced",
-            f"HITL-approved displacement.",
-        )
+        
+        if source == "Jira":
+            cursor.execute("""
+                UPDATE calendar_shadow
+                SET status     = 'Pending_Triage',
+                    is_triaged = 0,
+                    start_time = NULL,
+                    end_time   = NULL,
+                    google_event_id = NULL
+                WHERE event_id = ?
+            """, (displaced["event_id"],))
+            log_audit_action_conn(
+                conn, displaced["event_id"], "Displaced",
+                f"HITL-approved displacement.",
+            )
+        else:
+            cursor.execute("""
+                UPDATE calendar_shadow
+                SET status = 'Dismissed',
+                    google_event_id = NULL
+                WHERE event_id = ?
+            """, (displaced["event_id"],))
+            
+            
         cursor.execute("""
             UPDATE calendar_shadow
             SET start_time = ?,
@@ -27,14 +41,16 @@ def apply_swap(failed_event_id: str, displaced: dict) -> dict:
                 status     = 'Scheduled'
             WHERE event_id = ?
         """, (freed_start, freed_end, failed_event_id))
+        
         log_audit_action_conn(
             conn, failed_event_id, "Rescheduled",
             f"HITL swap: displaced '{displaced['title']}'.",
         )
+        
         conn.commit()
     finally:
         conn.close()
-    return {"start": freed_start, "end": freed_end}
+    return {"start": freed_start, "end": freed_end, "google_event_id": google_id}
 
 
 def hitl_node(state: dict) -> dict:
@@ -86,11 +102,18 @@ def hitl_node(state: dict) -> dict:
 
     action, displaced = options[choice]
     calendar_push = None
+    delete=None
 
     if action == "swap" and displaced:
         freed = apply_swap(signal["event_id"], displaced)
-        print(f"\n  [hitl] ✅ Swap applied: '{displaced['title']}' displaced, "
+        
+        print(f"\n  [hitl]  Swap applied: '{displaced['title']}' displaced, "
               f"'{signal['title']}' scheduled at {freed['start']}.")
+        
+        
+        if freed.get("google_event_id"):
+            delete = freed["google_event_id"]
+        
         calendar_push = {
             "title":       f"Deep Work: {signal['title']}",
             "description": signal.get("description", ""),
@@ -116,4 +139,4 @@ def hitl_node(state: dict) -> dict:
         print(f"\n  [hitl] Decision recorded: {action}")
 
     print("=" * 60 + "\n")
-    return {**state, "hitl_decision": action, "calendar_push": calendar_push}
+    return {**state, "hitl_decision": action, "calendar_push": calendar_push, "calendar_delete": delete}
