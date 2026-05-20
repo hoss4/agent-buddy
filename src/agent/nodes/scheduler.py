@@ -50,7 +50,7 @@ def get_effort(state: dict) -> int:
     return 60
 
 
-def get_busy_slots(end_window: datetime) -> list[dict]:
+def get_busy_slots(deadline: datetime) -> list[dict]:
    
     now = get_cairo_now()
     conn = get_connection()
@@ -72,7 +72,10 @@ def get_busy_slots(end_window: datetime) -> list[dict]:
     in_window = []
     for row in rows:
         busy_slot_start = to_naive(row["start_time"])
-        if busy_slot_start and now <= busy_slot_start <= end_window:
+        busy_slot_end = to_naive(row["end_time"])
+        if not busy_slot_start or not busy_slot_end:
+            continue
+        if busy_slot_end > now and busy_slot_start <= deadline:
             in_window.append(row)
     return in_window
 
@@ -158,10 +161,10 @@ def scheduler_node(state: dict) -> dict:
     print(f"  [scheduler] Finding slot for: {signal['title']} | effort={effort} min")
 
     now = get_cairo_now()
-    print("date time now : ", now)
+    #print("date time now : ", now)
 
     deadline = signal.get("deadline")
-    print("deadline : ", deadline)
+    #print("deadline : ", deadline)
     if deadline:
         try:
             deadline_dt = datetime.fromisoformat(deadline).replace(hour=WORK_END_HOUR, minute=0, second=0)
@@ -172,7 +175,13 @@ def scheduler_node(state: dict) -> dict:
         
     print("deadline_dt : ",deadline_dt)
     busy_slots = get_busy_slots(deadline_dt)
-    print("busy_slots : ", busy_slots)
+    
+    ## print busy slots :
+    print("------------------busy slots--------------------")
+    for slot in busy_slots:
+        print(slot)
+    print("------------------busy slots--------------------")
+    
     available  = find_available_slots(busy_slots, effort, now, deadline_dt)
     print("available : ", available)
 

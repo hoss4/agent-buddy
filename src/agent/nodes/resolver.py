@@ -62,7 +62,7 @@ def get_candidates(failed_task: dict, effort: int) -> list[dict]:
 
     valid = []
     for row in rows:
-        print("row : ",row)
+        #print("row : ",row)
         busy_slot_start = to_naive(row["start_time"])
         busy_slot_end = to_naive(row["end_time"])
         if not busy_slot_start or not busy_slot_end or busy_slot_start <= now:
@@ -73,7 +73,7 @@ def get_candidates(failed_task: dict, effort: int) -> list[dict]:
         if duration < effort:
             continue
         valid.append(row)
-        print("valid : ",valid)
+        #print("valid : ",valid)
     return valid
 
 
@@ -84,7 +84,7 @@ def best_match_lower_flex(candidates: list[dict], failed_priority:int ) -> dict 
             filtered.append(candidate) 
     if not filtered:
         return None
-    print(filtered)
+    #print(filtered)
     filtered.sort(key=lambda c: (c["priority"], c["start_time"]))
     return filtered[0]
 
@@ -121,11 +121,11 @@ def best_match(candidates: list[dict], predicate) -> dict | None:
 def get_failed_priority(state: dict) -> int:
     
     triage = state.get("triage_decision") or {}
-    print("triage : ", triage)
+    #print("triage : ", triage)
     if triage.get("priority"):
         print("taking triage priority : ", triage.get("priority"))
         return triage["priority"]
-    print("taking signal priority : ",state["current_signal"].get("priority", 5))
+    #print("taking signal priority : ",state["current_signal"].get("priority", 5))
     return state["current_signal"].get("priority", 5)
 
 def apply_auto_swap(failed_event_id: str, displaced: dict) -> dict:
@@ -199,11 +199,6 @@ def resolver_node(state: dict) -> dict:
     failed_priority = get_failed_priority(state)
     print("failed tasks priority : ", failed_priority)
 
-    # attempt 1: Auto-swap if flexible and lower priority
-    # ideal = best_match(
-    #     candidates,
-    #     lambda c: c["flexibility_score"] == 1 and c["priority"] < failed_priority,
-    # )
     
     ideal = best_match_lower_flex(candidates,failed_priority)
     
@@ -236,18 +231,10 @@ def resolver_node(state: dict) -> dict:
             "calendar_delete": deletes,
         }
 
-    # attempt 2: HITL with options
-    # higher_flex = best_match(
-    #     candidates,
-    #     lambda c: c["flexibility_score"] == 1 and c["priority"] >= failed_priority,
-    # )
+
     
     higher_flex = best_match_higher_flex(candidates,failed_priority)
     
-    # lower_fixed = best_match(
-    #     candidates,
-    #     lambda c: c["flexibility_score"] == 0 and c["priority"] < failed_priority,
-    # )
 
     lower_fixed = best_match_lower_fixed(candidates,failed_priority)
     

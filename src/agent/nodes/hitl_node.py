@@ -1,11 +1,11 @@
 from src.database.db_utils import get_connection, log_audit_action_conn
 
 
-def apply_swap(failed_event_id: str, displaced: dict) -> dict:
+def apply_swap(failed_event_id: str, displaced: dict) -> None:
     freed_start = displaced["start_time"]
     freed_end = displaced["end_time"]
     source = displaced.get("source", "Jira")
-    google_id = displaced.get("google_event_id")
+    #google_id = displaced.get("google_event_id")
 
     conn = get_connection()
     try:
@@ -14,8 +14,8 @@ def apply_swap(failed_event_id: str, displaced: dict) -> dict:
         if source == "Jira":
             cursor.execute("""
                 UPDATE calendar_shadow
-                SET status     = 'Pending_Triage',
-                    is_triaged = 0,
+                SET status     = 'Dismissed',
+                    is_triaged = 1,
                     start_time = NULL,
                     end_time   = NULL,
                     google_event_id = NULL
@@ -43,24 +43,36 @@ def apply_swap(failed_event_id: str, displaced: dict) -> dict:
         """, (freed_start, freed_end, failed_event_id))
         
         log_audit_action_conn(
-            conn, failed_event_id, "Rescheduled",
+            conn, failed_event_id, "Scheduled",
             f"HITL swap: displaced '{displaced['title']}'.",
         )
         
         conn.commit()
     finally:
         conn.close()
-    return {"start": freed_start, "end": freed_end, "google_event_id": google_id}
+
 
 
 def hitl_node(state: dict) -> dict:
+    
     signal     = state["current_signal"]
     candidates = state.get("hitl_candidates") or []
-
+    triage = state.get("triage_decision") or {}
+    
+    if triage.get("priority"):
+        
+        print("taking triage priority : ", triage.get("priority"))
+        triage_priority = triage.get("priority")
+        
+    else :
+        triage_priority = signal.get('priority', 5)
+    
     print("\n" + "=" * 60)
-    print("  ⚠  AGENT BUDDY — HUMAN DECISION REQUIRED")
+    print("   AGENT BUDDY — HUMAN DECISION REQUIRED")
     print("=" * 60)
-    print(f"\n  Task: {signal['title']} (priority {signal.get('priority', 5)})")
+    
+    
+    print(f"\n  Task: {signal['title']} (priority {triage_priority})")
     print(f"  Effort: {signal.get('total_estimated_effort', '?')} min "
           f"| Deadline: {signal.get('deadline', 'None')}")
 
@@ -75,10 +87,15 @@ def hitl_node(state: dict) -> dict:
 
     for cand in candidates:
         task = cand["task"]
-        flex_str  = "Flexible" if task["flexibility_score"] == 1 else "Fixed"
-        desc = (f"Swap with '{task['title']}' "
-                f"(priority {task['priority']}, {flex_str}, "
-                f"{task['start_time']} → {task['end_time']})")
+        
+        
+        if task["flexibility_score"] == 1 :
+            flex_str  = "Flexible"    
+        else :
+            flex_str = "Fixed"
+        
+        desc = (f" Swap with '{task['title']}' (priority {task['priority']}, {flex_str}, {task['start_time']} → {task['end_time']})")
+        
         options[next_key]      = ("swap", task)
         options_text[next_key] = desc
         next_key = chr(ord(next_key) + 1)
@@ -105,20 +122,20 @@ def hitl_node(state: dict) -> dict:
     delete=None
 
     if action == "swap" and displaced:
-        freed = apply_swap(signal["event_id"], displaced)
+        apply_swap(signal["event_id"], displaced)
         
         print(f"\n  [hitl]  Swap applied: '{displaced['title']}' displaced, "
-              f"'{signal['title']}' scheduled at {freed['start']}.")
+              f"'{signal['title']}' scheduled at {displaced['start_time']}.")
         
         
-        if freed.get("google_event_id"):
-            delete = freed["google_event_id"]
+        if displaced.get("google_event_id"):
+            delete = displaced["google_event_id"]
         
         calendar_push = {
             "title":       f"Deep Work: {signal['title']}",
             "description": signal.get("description", ""),
-            "start":       freed["start"],
-            "end":         freed["end"],
+            "start":       displaced["start_time"],
+            "end":         displaced["end_time"],
         }
     else:
         new_status = "Dismissed" if action == "discard" else "HITL_Resolved"
