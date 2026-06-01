@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Agent Buddy — HITL</title>
+    <style>
+        body {
+            font-family: -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f7;
+        }
+        h1 { color: #333; }
+        .empty { 
+            text-align: center;
+            color: #999;
+            padding: 60px 20px;
+        }
+        .request {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 16px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .task-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .task-meta {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 12px;
+        }
+        .reason {
+            background: #fff8e1;
+            padding: 12px;
+            border-left: 3px solid #ffc107;
+            margin-bottom: 16px;
+            font-size: 0.95em;
+        }
+        .option {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 14px 16px;
+            margin: 8px 0;
+            background: #f0f4ff;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95em;
+            transition: all 0.15s;
+        }
+        .option:hover {
+            border-color: #4a90e2;
+            background: #e3edff;
+        }
+        .option-key {
+            font-weight: 700;
+            color: #4a90e2;
+            margin-right: 8px;
+        }
+        .refresh {
+            float: right;
+            background: none;
+            border: 1px solid #ccc;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Agent Buddy — Pending Decisions
+        <button class="refresh" onclick="loadPending()">↻ Refresh</button>
+    </h1>
+    <div id="requests"></div>
+
+    <script>
+        async function loadPending() {
+            try {
+                const res = await fetch("/api/pending");
+                const requests = await res.json();
+                const container = document.getElementById("requests");
+
+                if (requests.length === 0) {
+                    container.innerHTML = '<div class="empty">No pending decisions. ✨</div>';
+                    return;
+                }
+
+                container.innerHTML = requests.map(req => `
+                    <div class="request" id="req-${req.id}">
+                        <div class="task-title">${req.task_title}</div>
+                        <div class="task-meta">
+                            Priority: ${req.task_priority} | 
+                            Effort: ${req.task_effort || '?'} min | 
+                            Deadline: ${req.task_deadline || 'None'}
+                        </div>
+                        <div class="reason">${req.reason}</div>
+                        ${req.options.map(opt => `
+                            <button class="option" onclick="decide(${req.id}, '${opt.key}')">
+                                <span class="option-key">[${opt.key}]</span> ${opt.description}
+                            </button>
+                        `).join('')}
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function decide(reqId, chosenKey) {
+            try {
+                const res = await fetch(`/api/decide/${reqId}`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({chosen_key: chosenKey}),
+                });
+                if (res.ok) {
+                    document.getElementById(`req-${reqId}`).style.display = "none";
+                    setTimeout(loadPending, 500);
+                } else {
+                    alert("Failed to submit decision");
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Network error");
+            }
+        }
+
+        // Initial load + auto-refresh every 5 sec
+        loadPending();
+        setInterval(loadPending, 5000);
+    </script>
+</body>
+</html>

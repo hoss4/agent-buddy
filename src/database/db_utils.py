@@ -3,6 +3,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
+
+import json
+import time
+
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "database.db"
 
@@ -172,3 +176,95 @@ def event_exists(event_id: str) -> bool:
     row = cursor.fetchone()
     conn.close()
     return row is not None
+
+
+
+
+def create_hitl_request(event_id, title, priority, effort, deadline, reason, options):
+    """Inserts a new HITL request, returns its ID."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO hitl_pending
+            (event_id, task_title, task_priority, task_effort, task_deadline,
+             reason, options_json, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+        """, (
+            event_id, title, priority, effort, deadline,
+            reason, json.dumps(options),
+        ))
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def get_hitl_request(request_id):
+    """Fetches a HITL request by ID."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM hitl_pending WHERE id = ?", (request_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def submit_hitl_decision(request_id, chosen_key):
+    """Records the user's choice. Frontend calls this."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE hitl_pending
+            SET status      = 'answered',
+                chosen_key  = ?,
+                answered_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'pending'
+        """, (chosen_key, request_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_all_pending_hitl():
+    """Returns all pending HITL requests for the frontend."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM hitl_pending
+            WHERE status = 'pending'
+            ORDER BY created_at ASC
+        """)
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def wait_for_hitl_decision(request_id, timeout_sec=600, poll_interval=2):
+    """Polls until decision is made or timeout. Returns chosen_key or None."""
+    elapsed = 0
+    while elapsed < timeout_sec:
+        req = get_hitl_request(request_id)
+        if not req:
+            return None
+        if req["status"] == "answered":
+            return req["chosen_key"]
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+    
+    # Timeout — mark as expired
+    conn = get_connection()
+    try:
+        conn.cursor().execute(
+            "UPDATE hitl_pending SET status = 'expired' WHERE id = ?",
+            (request_id,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return None

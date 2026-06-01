@@ -202,9 +202,7 @@ async def start():
 
     scheduler.add_job(run_cycle, "interval", minutes=1,
                       next_run_time=datetime.now(timezone.utc))
-    
-    # scheduler.add_job(strategic_calendar_sync, "interval", weeks=1,
-    #                   next_run_time=datetime.now(timezone.utc) + timedelta(weeks=1))
+ 
 
 
     # scheduler.add_job(strategic_calendar_sync, "interval", minutes=2,

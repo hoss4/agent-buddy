@@ -81,6 +81,22 @@ def init_db():
             reasoning_statement TEXT
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS hitl_pending (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id        TEXT NOT NULL,           -- the failed task being decided on
+            task_title      TEXT,
+            task_priority   INTEGER,
+            task_effort     INTEGER,
+            task_deadline   TEXT,
+            reason          TEXT,                    -- why HITL was triggered
+            options_json    TEXT NOT NULL,           -- JSON-encoded list of options
+            status          TEXT DEFAULT 'pending',  -- pending | answered | expired
+            chosen_key      TEXT,                    -- "A", "B", "C"...
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            answered_at     DATETIME
+        )
+    ''')
 
     conn.commit()
     conn.close()
